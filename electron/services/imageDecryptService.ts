@@ -8,9 +8,10 @@ import { Worker } from 'worker_threads'
 import { ConfigService } from './config'
 import { wcdbService } from './wcdbService'
 
-// 鑾峰彇 ffmpeg-static 鐨勮矾寰?function getStaticFfmpegPath(): string | null {
+// 获取 ffmpeg-static 的路径
+function getStaticFfmpegPath(): string | null {
   try {
-    // 鏂规硶1: 鐩存帴 require ffmpeg-static
+    // 方法1: 直接 require ffmpeg-static
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const ffmpegStatic = require('ffmpeg-static')
 
@@ -18,13 +19,13 @@ import { wcdbService } from './wcdbService'
       return ffmpegStatic
     }
 
-    // 鏂规硶2: 鎵嬪姩鏋勫缓璺緞锛堝紑鍙戠幆澧冿級
+    // 方法2: 手动构建路径（开发环境）
     const devPath = join(process.cwd(), 'node_modules', 'ffmpeg-static', 'ffmpeg.exe')
     if (existsSync(devPath)) {
       return devPath
     }
 
-    // 鏂规硶3: 鎵撳寘鍚庣殑璺緞
+    // 方法3: 打包后的路径
     if (app.isPackaged) {
       const resourcesPath = process.resourcesPath
       const packedPath = join(resourcesPath, 'app.asar.unpacked', 'node_modules', 'ffmpeg-static', 'ffmpeg.exe')
@@ -43,7 +44,8 @@ type DecryptResult = {
   success: boolean
   localPath?: string
   error?: string
-  isThumb?: boolean  // 鏄惁鏄缉鐣ュ浘锛堟病鏈夐珮娓呭浘鏃惰繑鍥炵缉鐣ュ浘锛?}
+  isThumb?: boolean  // 是否是缩略图（没有高清图时返回缩略图）
+}
 
 type HardlinkState = {
   imageTable?: string
@@ -66,7 +68,8 @@ export class ImageDecryptService {
     const metaStr = meta ? ` ${JSON.stringify(meta)}` : ''
     const logLine = `[${timestamp}] [ImageDecrypt] ${message}${metaStr}\n`
 
-    // 鍙啓鍏ユ枃浠讹紝涓嶈緭鍑哄埌鎺у埗鍙?    this.writeLog(logLine)
+    // 只写入文件，不输出到控制台
+    this.writeLog(logLine)
   }
 
   private logError(message: string, error?: unknown, meta?: Record<string, unknown>): void {
@@ -76,10 +79,10 @@ export class ImageDecryptService {
     const metaStr = meta ? ` ${JSON.stringify(meta)}` : ''
     const logLine = `[${timestamp}] [ImageDecrypt] ERROR: ${message}${errorStr}${metaStr}\n`
 
-    // 鍚屾椂杈撳嚭鍒版帶鍒跺彴
+    // 同时输出到控制台
     console.error(message, error, meta)
 
-    // 鍐欏叆鏃ュ織鏂囦欢
+    // 写入日志文件
     this.writeLog(logLine)
   }
 
@@ -91,7 +94,7 @@ export class ImageDecryptService {
       }
       appendFileSync(join(logDir, 'wcdb.log'), line, { encoding: 'utf8' })
     } catch (err) {
-      console.error('鍐欏叆鏃ュ織澶辫触:', err)
+      console.error('写入日志失败:', err)
     }
   }
 
@@ -100,7 +103,7 @@ export class ImageDecryptService {
     const cacheKeys = this.getCacheKeys(payload)
     const cacheKey = cacheKeys[0]
     if (!cacheKey) {
-      return { success: false, error: '缂哄皯鍥剧墖鏍囪瘑' }
+      return { success: false, error: '缺少图片标识' }
     }
     for (const key of cacheKeys) {
       const cached = this.resolvedCache.get(key)
@@ -137,15 +140,15 @@ export class ImageDecryptService {
         return { success: true, localPath: dataUrl || this.filePathToUrl(existing), hasUpdate }
       }
     }
-    this.logInfo('鏈壘鍒扮紦瀛?, { md5: payload.imageMd5, datName: payload.imageDatName })
-    return { success: false, error: '鏈壘鍒扮紦瀛樺浘鐗? }
+    this.logInfo('未找到缓存', { md5: payload.imageMd5, datName: payload.imageDatName })
+    return { success: false, error: '未找到缓存图片' }
   }
 
   async decryptImage(payload: { sessionId?: string; imageMd5?: string; imageDatName?: string; force?: boolean }): Promise<DecryptResult> {
     await this.ensureCacheIndexed()
     const cacheKey = payload.imageMd5 || payload.imageDatName
     if (!cacheKey) {
-      return { success: false, error: '缂哄皯鍥剧墖鏍囪瘑' }
+      return { success: false, error: '缺少图片标识' }
     }
 
     if (!payload.force) {
@@ -177,19 +180,19 @@ export class ImageDecryptService {
     payload: { sessionId?: string; imageMd5?: string; imageDatName?: string; force?: boolean },
     cacheKey: string
   ): Promise<DecryptResult> {
-    this.logInfo('寮€濮嬭В瀵嗗浘鐗?, { md5: payload.imageMd5, datName: payload.imageDatName, force: payload.force })
+    this.logInfo('开始解密图片', { md5: payload.imageMd5, datName: payload.imageDatName, force: payload.force })
     try {
       const wxid = this.configService.get('myWxid')
       const dbPath = this.configService.get('dbPath')
       if (!wxid || !dbPath) {
-        this.logError('閰嶇疆缂哄け', undefined, { wxid: !!wxid, dbPath: !!dbPath })
-        return { success: false, error: '鏈厤缃处鍙锋垨鏁版嵁搴撹矾寰? }
+        this.logError('配置缺失', undefined, { wxid: !!wxid, dbPath: !!dbPath })
+        return { success: false, error: '未配置账号或数据库路径' }
       }
 
       const accountDir = this.resolveAccountDir(dbPath, wxid)
       if (!accountDir) {
-        this.logError('鏈壘鍒拌处鍙风洰褰?, undefined, { dbPath, wxid })
-        return { success: false, error: '鏈壘鍒拌处鍙风洰褰? }
+        this.logError('未找到账号目录', undefined, { dbPath, wxid })
+        return { success: false, error: '未找到账号目录' }
       }
 
       const datPath = await this.resolveDatPath(
@@ -200,17 +203,17 @@ export class ImageDecryptService {
         { allowThumbnail: !payload.force, skipResolvedCache: Boolean(payload.force) }
       )
 
-      // 濡傛灉瑕佹眰楂樻竻鍥句絾娌℃壘鍒帮紝鐩存帴杩斿洖鎻愮ず
+      // 如果要求高清图但没找到，直接返回提示
       if (!datPath && payload.force) {
-        this.logError('鏈壘鍒伴珮娓呭浘', undefined, { md5: payload.imageMd5, datName: payload.imageDatName })
-        return { success: false, error: '鏈壘鍒伴珮娓呭浘锛岃鍦ㄥ井淇′腑鐐瑰紑璇ュ浘鐗囨煡鐪嬪悗閲嶈瘯' }
+        this.logError('未找到高清图', undefined, { md5: payload.imageMd5, datName: payload.imageDatName })
+        return { success: false, error: '未找到高清图，请在微信中点开该图片查看后重试' }
       }
       if (!datPath) {
-        this.logError('鏈壘鍒癉AT鏂囦欢', undefined, { md5: payload.imageMd5, datName: payload.imageDatName })
-        return { success: false, error: '鏈壘鍒板浘鐗囨枃浠? }
+        this.logError('未找到DAT文件', undefined, { md5: payload.imageMd5, datName: payload.imageDatName })
+        return { success: false, error: '未找到图片文件' }
       }
 
-      this.logInfo('鎵惧埌DAT鏂囦欢', { datPath })
+      this.logInfo('找到DAT文件', { datPath })
 
       if (!extname(datPath).toLowerCase().includes('dat')) {
         this.cacheResolvedPaths(cacheKey, payload.imageMd5, payload.imageDatName, datPath)
@@ -221,12 +224,12 @@ export class ImageDecryptService {
         return { success: true, localPath, isThumb }
       }
 
-      // 鏌ユ壘宸茬紦瀛樼殑瑙ｅ瘑鏂囦欢
+      // 查找已缓存的解密文件
       const existing = this.findCachedOutput(cacheKey, payload.force, payload.sessionId)
       if (existing) {
-        this.logInfo('鎵惧埌宸茶В瀵嗘枃浠?, { existing, isHd: this.isHdPath(existing) })
+        this.logInfo('找到已解密文件', { existing, isHd: this.isHdPath(existing) })
         const isHd = this.isHdPath(existing)
-        // 濡傛灉瑕佹眰楂樻竻浣嗘壘鍒扮殑鏄缉鐣ュ浘锛岀户缁В瀵嗛珮娓呭浘
+        // 如果要求高清但找到的是缩略图，继续解密高清图
         if (!(payload.force && !isHd)) {
           this.cacheResolvedPaths(cacheKey, payload.imageMd5, payload.imageDatName, existing)
           const dataUrl = this.fileToDataUrl(existing)
@@ -238,7 +241,8 @@ export class ImageDecryptService {
       }
 
       const xorKeyRaw = this.configService.get('imageXorKey') as unknown
-      // 鏀寔鍗佸叚杩涘埗鏍煎紡锛堝 0x53锛夊拰鍗佽繘鍒舵牸寮?      let xorKey: number
+      // 支持十六进制格式（如 0x53）和十进制格式
+      let xorKey: number
       if (typeof xorKeyRaw === 'number') {
         xorKey = xorKeyRaw
       } else {
@@ -250,21 +254,23 @@ export class ImageDecryptService {
         }
       }
       if (Number.isNaN(xorKey) || (!xorKey && xorKey !== 0)) {
-        return { success: false, error: '鏈厤缃浘鐗囪В瀵嗗瘑閽? }
+        return { success: false, error: '未配置图片解密密钥' }
       }
 
       const aesKeyRaw = this.configService.get('imageAesKey')
       const aesKey = this.resolveAesKey(aesKeyRaw)
 
-      this.logInfo('寮€濮嬭В瀵咲AT鏂囦欢', { datPath, xorKey, hasAesKey: !!aesKey })
+      this.logInfo('开始解密DAT文件', { datPath, xorKey, hasAesKey: !!aesKey })
       let decrypted = await this.decryptDatAuto(datPath, xorKey, aesKey)
 
-      // 妫€鏌ユ槸鍚︽槸 wxgf 鏍煎紡锛屽鏋滄槸鍒欏皾璇曟彁鍙栫湡瀹炲浘鐗囨暟鎹?      const wxgfResult = await this.unwrapWxgf(decrypted)
+      // 检查是否是 wxgf 格式，如果是则尝试提取真实图片数据
+      const wxgfResult = await this.unwrapWxgf(decrypted)
       decrypted = wxgfResult.data
 
       let ext = this.detectImageExtension(decrypted)
 
-      // 濡傛灉鏄?wxgf 鏍煎紡涓旀病妫€娴嬪埌鎵╁睍鍚?      if (wxgfResult.isWxgf && !ext) {
+      // 如果是 wxgf 格式且没检测到扩展名
+      if (wxgfResult.isWxgf && !ext) {
         ext = '.hevc'
       }
 
@@ -272,15 +278,16 @@ export class ImageDecryptService {
 
       const outputPath = this.getCacheOutputPathFromDat(datPath, finalExt, payload.sessionId)
       await writeFile(outputPath, decrypted)
-      this.logInfo('瑙ｅ瘑鎴愬姛', { outputPath, size: decrypted.length })
+      this.logInfo('解密成功', { outputPath, size: decrypted.length })
 
-      // 瀵逛簬 hevc 鏍煎紡锛岃繑鍥為敊璇彁绀?      if (finalExt === '.hevc') {
+      if (finalExt === '.hevc') {
         return {
           success: false,
-          error: '姝ゅ浘鐗囦负寰俊鏂版牸寮?wxgf)锛岄渶瑕佸畨瑁?ffmpeg 鎵嶈兘鏄剧ず',
+          error: '此图片为微信新格式 (wxgf)，需要安装 ffmpeg 才能显示',
           isThumb: this.isThumbnailPath(datPath)
         }
       }
+
       const isThumb = this.isThumbnailPath(datPath)
       this.cacheResolvedPaths(cacheKey, payload.imageMd5, payload.imageDatName, outputPath)
       if (!isThumb) {
@@ -291,7 +298,7 @@ export class ImageDecryptService {
       this.emitCacheResolved(payload, cacheKey, localPath)
       return { success: true, localPath, isThumb }
     } catch (e) {
-      this.logError('瑙ｅ瘑澶辫触', e, { md5: payload.imageMd5, datName: payload.imageDatName })
+      this.logError('解密失败', e, { md5: payload.imageMd5, datName: payload.imageDatName })
       return { success: false, error: String(e) }
     }
   }
@@ -322,7 +329,8 @@ export class ImageDecryptService {
   }
 
   /**
-   * 鑾峰彇瑙ｅ瘑鍚庣殑缂撳瓨鐩綍锛堢敤浜庢煡鎵?hardlink.db锛?   */
+   * 获取解密后的缓存目录（用于查找 hardlink.db）
+   */
   private getDecryptedCacheDir(wxid: string): string | null {
     const cachePath = this.configService.get('cachePath')
     if (!cachePath) return null
@@ -330,7 +338,7 @@ export class ImageDecryptService {
     const cleanedWxid = this.cleanAccountDirName(wxid)
     const cacheAccountDir = join(cachePath, cleanedWxid)
 
-    // 妫€鏌ョ紦瀛樼洰褰曚笅鏄惁鏈?hardlink.db
+    // 检查缓存目录下是否有 hardlink.db
     if (existsSync(join(cacheAccountDir, 'hardlink.db'))) {
       return cacheAccountDir
     }
@@ -373,7 +381,7 @@ export class ImageDecryptService {
 
     const suffixMatch = trimmed.match(/^(.+)_([a-zA-Z0-9]{4})$/)
     const cleaned = suffixMatch ? suffixMatch[1] : trimmed
-    
+
     return cleaned
   }
 
@@ -387,15 +395,36 @@ export class ImageDecryptService {
     const allowThumbnail = options?.allowThumbnail ?? true
     const skipResolvedCache = options?.skipResolvedCache ?? false
     this.logInfo('[ImageDecrypt] resolveDatPath', {
-      accountDir,
       imageMd5,
       imageDatName,
-      sessionId,
       allowThumbnail,
       skipResolvedCache
     })
 
-    // 浼樺厛閫氳繃 hardlink.db 鏌ヨ
+    if (!skipResolvedCache) {
+      if (imageMd5) {
+        const cached = this.resolvedCache.get(imageMd5)
+        if (cached && existsSync(cached)) return cached
+      }
+      if (imageDatName) {
+        const cached = this.resolvedCache.get(imageDatName)
+        if (cached && existsSync(cached)) return cached
+      }
+    }
+
+    // 1. 通过 MD5 快速定位 (MsgAttach 目录)
+    if (imageMd5) {
+      const res = await this.fastProbabilisticSearch(accountDir, imageMd5, allowThumbnail)
+      if (res) return res
+    }
+
+    // 2. 如果 imageDatName 看起来像 MD5，也尝试快速定位
+    if (!imageMd5 && imageDatName && this.looksLikeMd5(imageDatName)) {
+      const res = await this.fastProbabilisticSearch(accountDir, imageDatName, allowThumbnail)
+      if (res) return res
+    }
+
+    // 优先通过 hardlink.db 查询
     if (imageMd5) {
       this.logInfo('[ImageDecrypt] hardlink lookup (md5)', { imageMd5, sessionId })
       const hardlinkPath = await this.resolveHardlinkPath(accountDir, imageMd5, sessionId)
@@ -407,15 +436,16 @@ export class ImageDecryptService {
           if (imageDatName) this.cacheDatPath(accountDir, imageDatName, hardlinkPath)
           return hardlinkPath
         }
-        // hardlink 鎵惧埌鐨勬槸缂╃暐鍥撅紝浣嗚姹傞珮娓呭浘
-        // 灏濊瘯鍦ㄥ悓涓€鐩綍涓嬫煡鎵鹃珮娓呭浘鍙樹綋锛堝揩閫熸煡鎵撅紝涓嶉亶鍘嗭級
+        // hardlink 找到的是缩略图，但要求高清图
+        // 尝试在同一目录下查找高清图变体（快速查找，不遍历）
         const hdPath = this.findHdVariantInSameDir(hardlinkPath)
         if (hdPath) {
           this.cacheDatPath(accountDir, imageMd5, hdPath)
           if (imageDatName) this.cacheDatPath(accountDir, imageDatName, hdPath)
           return hdPath
         }
-        // 娌℃壘鍒伴珮娓呭浘锛岃繑鍥?null锛堜笉杩涜鍏ㄥ眬鎼滅储锛?        return null
+        // 没找到高清图，返回 null（不进行全局搜索）
+        return null
       }
       this.logInfo('[ImageDecrypt] hardlink miss (md5)', { imageMd5 })
       if (imageDatName && this.looksLikeMd5(imageDatName) && imageDatName !== imageMd5) {
@@ -428,7 +458,7 @@ export class ImageDecryptService {
             this.cacheDatPath(accountDir, imageDatName, fallbackPath)
             return fallbackPath
           }
-          // 鎵惧埌缂╃暐鍥句絾瑕佹眰楂樻竻鍥撅紝灏濊瘯鍚岀洰褰曟煡鎵鹃珮娓呭浘鍙樹綋
+          // 找到缩略图但要求高清图，尝试同目录查找高清图变体
           const hdPath = this.findHdVariantInSameDir(fallbackPath)
           if (hdPath) {
             this.cacheDatPath(accountDir, imageDatName, hdPath)
@@ -450,7 +480,7 @@ export class ImageDecryptService {
           this.cacheDatPath(accountDir, imageDatName, hardlinkPath)
           return hardlinkPath
         }
-        // hardlink 鎵惧埌鐨勬槸缂╃暐鍥撅紝浣嗚姹傞珮娓呭浘
+        // hardlink 找到的是缩略图，但要求高清图
         const hdPath = this.findHdVariantInSameDir(hardlinkPath)
         if (hdPath) {
           this.cacheDatPath(accountDir, imageDatName, hdPath)
@@ -461,7 +491,7 @@ export class ImageDecryptService {
       this.logInfo('[ImageDecrypt] hardlink miss (datName)', { imageDatName })
     }
 
-    // 濡傛灉瑕佹眰楂樻竻鍥句絾 hardlink 娌℃壘鍒帮紝涔熶笉瑕佹悳绱簡锛堟悳绱㈠お鎱級
+    // 如果要求高清图但 hardlink 没找到，也不要搜索了（搜索太慢）
     if (!allowThumbnail) {
       return null
     }
@@ -471,7 +501,7 @@ export class ImageDecryptService {
       const cached = this.resolvedCache.get(imageDatName)
       if (cached && existsSync(cached)) {
         if (allowThumbnail || !this.isThumbnailPath(cached)) return cached
-        // 缂撳瓨鐨勬槸缂╃暐鍥撅紝灏濊瘯鎵鹃珮娓呭浘
+        // 缓存的是缩略图，尝试找高清图
         const hdPath = this.findHdVariantInSameDir(cached)
         if (hdPath) return hdPath
       }
@@ -574,9 +604,7 @@ export class ImageDecryptService {
     }).catch(() => { })
   }
 
-  private looksLikeMd5(value: string): boolean {
-    return /^[a-fA-F0-9]{16,32}$/.test(value)
-  }
+
 
   private resolveHardlinkDbPath(accountDir: string): string | null {
     const wxid = this.configService.get('myWxid')
@@ -643,12 +671,14 @@ export class ImageDecryptService {
         }
       }
 
-      // dir1 鍜?dir2 鏄?rowid锛岄渶瑕佷粠 dir2id 琛ㄦ煡璇㈠搴旂殑鐩綍鍚?      let dir1Name: string | null = null
+      // dir1 和 dir2 是 rowid，需要从 dir2id 表查询对应的目录名
+      let dir1Name: string | null = null
       let dir2Name: string | null = null
 
       if (state.dirTable) {
         try {
-          // 閫氳繃 rowid 鏌ヨ鐩綍鍚?          const dir1Result = await wcdbService.execQuery(
+          // 通过 rowid 查询目录名
+          const dir1Result = await wcdbService.execQuery(
             'media',
             hardlinkPath,
             `SELECT username FROM ${state.dirTable} WHERE rowid = ${Number(dir1)} LIMIT 1`
@@ -677,7 +707,7 @@ export class ImageDecryptService {
         return null
       }
 
-      // 鏋勫缓璺緞: msg/attach/{dir1Name}/{dir2Name}/Img/{fileName}
+      // 构建路径: msg/attach/{dir1Name}/{dir2Name}/Img/{fileName}
       const possiblePaths = [
         join(accountDir, 'msg', 'attach', dir1Name, dir2Name, 'Img', fileName),
         join(accountDir, 'msg', 'attach', dir1Name, dir2Name, 'mg', fileName),
@@ -767,15 +797,16 @@ export class ImageDecryptService {
     const root = join(accountDir, 'msg', 'attach')
     if (!existsSync(root)) return null
 
-    // 浼樺寲1锛氬揩閫熸鐜囨€ф煡鎵?    // 鍖呭惈锛?. 鍩轰簬鏂囦欢鍚嶇殑鍓嶇紑鐚滄祴 (鏃х増)
-    //       2. 鍩轰簬鏃ユ湡鐨勬渶杩戞湀浠芥壂鎻?(鏂扮増鏃犵储寮曟椂)
+    // 优化1：快速概率性查找
+    // 包含：1. 基于文件名的前缀猜测 (旧版)
+    //       2. 基于日期的最近月份扫描 (新版无索引时)
     const fastHit = await this.fastProbabilisticSearch(root, datName)
     if (fastHit) {
       this.resolvedCache.set(key, fastHit)
       return fastHit
     }
 
-    // 浼樺寲2锛氬厹搴曟壂鎻?(寮傛闈為樆濉?
+    // 优化2：兜底扫描 (异步非阻塞)
     const found = await this.walkForDatInWorker(root, datName.toLowerCase(), 8, allowThumbnail, thumbOnly)
     if (found) {
       this.resolvedCache.set(key, found)
@@ -785,15 +816,16 @@ export class ImageDecryptService {
   }
 
   /**
-   * 鍩轰簬鏂囦欢鍚嶇殑鍝堝笇鐗瑰緛鐚滄祴鍙兘鐨勮矾寰?   * 鍖呭惈锛?. 寰俊鏃х増缁撴瀯 filename.substr(0, 2)/...
-   *       2. 寰俊鏂扮増缁撴瀯 msg/attach/{hash}/{YYYY-MM}/Img/filename
+   * 基于文件名的哈希特征猜测可能的路径
+   * 包含：1. 微信旧版结构 filename.substr(0, 2)/...
+   *       2. 微信新版结构 msg/attach/{hash}/{YYYY-MM}/Img/filename
    */
-  private async fastProbabilisticSearch(root: string, datName: string): Promise<string | null> {
+  private async fastProbabilisticSearch(root: string, datName: string, _allowThumbnail?: boolean): Promise<string | null> {
     const { promises: fs } = require('fs')
     const { join } = require('path')
 
     try {
-      // --- 绛栫暐 A: 鏃х増璺緞鐚滄祴 (msg/attach/xx/yy/...) ---
+      // --- 策略 A: 旧版路径猜测 (msg/attach/xx/yy/...) ---
       const lowerName = datName.toLowerCase()
       let baseName = lowerName
       if (baseName.endsWith('.dat')) {
@@ -876,15 +908,16 @@ export class ImageDecryptService {
   }
 
   /**
-   * 鍦ㄥ悓涓€鐩綍涓嬫煡鎵鹃珮娓呭浘鍙樹綋
-   * 缂╃暐鍥? xxx_t.dat -> 楂樻竻鍥? xxx_h.dat 鎴?xxx.dat
+   * 在同一目录下查找高清图变体
+   * 缩略图 xxx_t.dat -> 高清图 xxx_h.dat 或 xxx.dat
    */
   private findHdVariantInSameDir(thumbPath: string): string | null {
     try {
       const dir = dirname(thumbPath)
       const fileName = basename(thumbPath).toLowerCase()
 
-      // 鎻愬彇鍩虹鍚嶇О锛堝幓鎺?_t.dat 鎴?.t.dat锛?      let baseName = fileName
+      // 提取基础名称（去掉 _t.dat 或 .t.dat）
+      let baseName = fileName
       if (baseName.endsWith('_t.dat')) {
         baseName = baseName.slice(0, -6)
       } else if (baseName.endsWith('.t.dat')) {
@@ -893,7 +926,8 @@ export class ImageDecryptService {
         return null
       }
 
-      // 灏濊瘯鏌ユ壘楂樻竻鍥惧彉浣?      const variants = [
+      // 尝试查找高清图变体
+      const variants = [
         `${baseName}_h.dat`,
         `${baseName}.h.dat`,
         `${baseName}.dat`
@@ -957,55 +991,6 @@ export class ImageDecryptService {
     })
   }
 
-  private matchesDatName(fileName: string, datName: string): boolean {
-    const lower = fileName.toLowerCase()
-    const base = lower.endsWith('.dat') ? lower.slice(0, -4) : lower
-    const normalizedBase = this.normalizeDatBase(base)
-    const normalizedTarget = this.normalizeDatBase(datName.toLowerCase())
-    if (normalizedBase === normalizedTarget) return true
-    const pattern = new RegExp(`^${datName}(?:[._][a-z])?\\.dat$`, 'i')
-    if (pattern.test(lower)) return true
-    return lower.endsWith('.dat') && lower.includes(datName)
-  }
-
-  private scoreDatName(fileName: string): number {
-    if (fileName.includes('.t.dat') || fileName.includes('_t.dat')) return 1
-    if (fileName.includes('.c.dat') || fileName.includes('_c.dat')) return 1
-    return 2
-  }
-
-  private isThumbnailDat(fileName: string): boolean {
-    return fileName.includes('.t.dat') || fileName.includes('_t.dat')
-  }
-
-  private hasXVariant(baseLower: string): boolean {
-    return /[._][a-z]$/.test(baseLower)
-  }
-
-  private isThumbnailPath(filePath: string): boolean {
-    const lower = basename(filePath).toLowerCase()
-    if (this.isThumbnailDat(lower)) return true
-    const ext = extname(lower)
-    const base = ext ? lower.slice(0, -ext.length) : lower
-    // 鏀寔鏂板懡鍚?_thumb 鍜屾棫鍛藉悕 _t
-    return base.endsWith('_t') || base.endsWith('_thumb')
-  }
-
-  private isHdPath(filePath: string): boolean {
-    const lower = basename(filePath).toLowerCase()
-    const ext = extname(lower)
-    const base = ext ? lower.slice(0, -ext.length) : lower
-    return base.endsWith('_hd') || base.endsWith('_h')
-  }
-
-  private hasImageVariantSuffix(baseLower: string): boolean {
-    return /[._][a-z]$/.test(baseLower)
-  }
-
-  private isLikelyImageDatBase(baseLower: string): boolean {
-    return this.hasImageVariantSuffix(baseLower) || this.looksLikeMd5(baseLower)
-  }
-
   private normalizeDatBase(name: string): string {
     let base = name.toLowerCase()
     if (base.endsWith('.dat') || base.endsWith('.jpg')) {
@@ -1017,34 +1002,24 @@ export class ImageDecryptService {
     return base
   }
 
-  private sanitizeDirName(name: string): string {
-    const trimmed = name.trim()
-    if (!trimmed) return 'unknown'
-    return trimmed.replace(/[<>:"/\\|?*]/g, '_')
+  private hasImageVariantSuffix(baseLower: string): boolean {
+    return /[._][a-z]$/.test(baseLower)
   }
 
-  private resolveTimeDir(datPath: string): string {
-    const parts = datPath.split(/[\\/]+/)
-    for (const part of parts) {
-      if (/^\d{4}-\d{2}$/.test(part)) return part
-    }
-    try {
-      const stat = statSync(datPath)
-      const year = stat.mtime.getFullYear()
-      const month = String(stat.mtime.getMonth() + 1).padStart(2, '0')
-      return `${year}-${month}`
-    } catch {
-      return 'unknown-time'
-    }
+  private isLikelyImageDatBase(baseLower: string): boolean {
+    return this.hasImageVariantSuffix(baseLower) || this.looksLikeMd5(baseLower)
   }
+
+
 
   private findCachedOutput(cacheKey: string, preferHd: boolean = false, sessionId?: string): string | null {
     const allRoots = this.getAllCacheRoots()
     const normalizedKey = this.normalizeDatBase(cacheKey.toLowerCase())
     const extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
 
-    // 閬嶅巻鎵€鏈夊彲鑳界殑缂撳瓨鏍硅矾寰?    for (const root of allRoots) {
-      // 绛栫暐1: 鏂扮洰褰曠粨鏋?Images/{sessionId}/{YYYY-MM}/{file}_hd.jpg
+    // 遍历所有可能的缓存根路径
+    for (const root of allRoots) {
+      // 策略1: 新目录结构 Images/{sessionId}/{YYYY-MM}/{file}_hd.jpg
       if (sessionId) {
         const sessionDir = join(root, this.sanitizeDirName(sessionId))
         if (existsSync(sessionDir)) {
@@ -1053,7 +1028,7 @@ export class ImageDecryptService {
               .filter(d => d.isDirectory() && /^\d{4}-\d{2}$/.test(d.name))
               .map(d => d.name)
               .sort()
-              .reverse() // 鏈€鏂扮殑鏃ユ湡浼樺厛
+              .reverse() // 最新的日期优先
 
             for (const dateDir of dateDirs) {
               const imageDir = join(sessionDir, dateDir)
@@ -1064,14 +1039,15 @@ export class ImageDecryptService {
         }
       }
 
-      // 绛栫暐2: 閬嶅巻鎵€鏈?sessionId 鐩綍鏌ユ壘锛堝鏋滄病鏈夋寚瀹?sessionId锛?      try {
+      // 策略2: 遍历所有 sessionId 目录查找（如果没有指定 sessionId）
+      try {
         const sessionDirs = readdirSync(root, { withFileTypes: true })
           .filter(d => d.isDirectory())
           .map(d => d.name)
 
         for (const session of sessionDirs) {
           const sessionDir = join(root, session)
-          // 妫€鏌ユ槸鍚︽槸鏃ユ湡鐩綍缁撴瀯
+          // 检查是否是日期目录结构
           try {
             const subDirs = readdirSync(sessionDir, { withFileTypes: true })
               .filter(d => d.isDirectory() && /^\d{4}-\d{2}$/.test(d.name))
@@ -1086,14 +1062,14 @@ export class ImageDecryptService {
         }
       } catch { }
 
-      // 绛栫暐3: 鏃х洰褰曠粨鏋?Images/{normalizedKey}/{normalizedKey}_thumb.jpg
+      // 策略3: 旧目录结构 Images/{normalizedKey}/{normalizedKey}_thumb.jpg
       const oldImageDir = join(root, normalizedKey)
       if (existsSync(oldImageDir)) {
         const hit = this.findCachedOutputInDir(oldImageDir, normalizedKey, extensions, preferHd)
         if (hit) return hit
       }
 
-      // 绛栫暐4: 鏈€鏃х殑骞抽摵缁撴瀯 Images/{file}.jpg
+      // 策略4: 最旧的平铺结构 Images/{file}.jpg
       for (const ext of extensions) {
         const candidate = join(root, `${cacheKey}${ext}`)
         if (existsSync(candidate)) return candidate
@@ -1113,7 +1089,8 @@ export class ImageDecryptService {
     extensions: string[],
     preferHd: boolean
   ): string | null {
-    // 鍏堟鏌ュ苟鍒犻櫎鏃х殑 .hevc 鏂囦欢锛坒fmpeg 杞崲澶辫触鏃堕仐鐣欑殑锛?    const hevcThumb = join(dirPath, `${normalizedKey}_thumb.hevc`)
+    // 先检查并删除旧的 .hevc 文件（ffmpeg 转换失败时遗留的）
+    const hevcThumb = join(dirPath, `${normalizedKey}_thumb.hevc`)
     const hevcHd = join(dirPath, `${normalizedKey}_hd.hevc`)
     try {
       if (existsSync(hevcThumb)) {
@@ -1132,7 +1109,8 @@ export class ImageDecryptService {
       const thumbPath = join(dirPath, `${normalizedKey}_thumb${ext}`)
       if (existsSync(thumbPath)) return thumbPath
 
-      // 鍏佽杩斿洖 _hd 鏍煎紡锛堝洜涓哄畠鏈?_hd 鍙樹綋鍚庣紑锛?      if (!preferHd) {
+      // 允许返回 _hd 格式（因为它有 _hd 变体后缀）
+      if (!preferHd) {
         const hdPath = join(dirPath, `${normalizedKey}_hd${ext}`)
         if (existsSync(hdPath)) return hdPath
       }
@@ -1145,9 +1123,11 @@ export class ImageDecryptService {
     const lower = name.toLowerCase()
     const base = lower.endsWith('.dat') ? name.slice(0, -4) : name
 
-    // 鎻愬彇鍩虹鍚嶇О锛堝幓鎺?_t, _h 绛夊悗缂€锛?    const normalizedBase = this.normalizeDatBase(base)
+    // 提取基础名称（去掉 _t, _h 等后缀）
+    const normalizedBase = this.normalizeDatBase(base)
 
-    // 鍒ゆ柇鏄缉鐣ュ浘杩樻槸楂樻竻鍥?    const isThumb = this.isThumbnailDat(lower)
+    // 判断是缩略图还是高清图
+    const isThumb = this.isThumbnailDat(lower)
     const suffix = isThumb ? '_thumb' : '_hd'
 
     const contactDir = this.sanitizeDirName(sessionId || 'unknown')
@@ -1228,7 +1208,7 @@ export class ImageDecryptService {
       if (!lower.endsWith('.dat')) continue
       if (this.isThumbnailDat(lower)) continue
       const baseLower = lower.slice(0, -4)
-      // 鍙帓闄ゆ病鏈?_x 鍙樹綋鍚庣紑鐨勬枃浠讹紙鍏佽 _hd銆乢h 绛夋墍鏈夊甫鍙樹綋鐨勶級
+      // 只排除没有 _x 变体后缀的文件（允许 _hd、_h 等所有带变体的）
       if (!this.hasXVariant(baseLower)) continue
       if (this.normalizeDatBase(baseLower) !== target) continue
       return join(dirPath, entry)
@@ -1241,7 +1221,7 @@ export class ImageDecryptService {
     if (!lower.endsWith('.dat')) return false
     if (this.isThumbnailDat(lower)) return false
     const baseLower = lower.slice(0, -4)
-    // 鍙鏌ユ槸鍚︽湁 _x 鍙樹綋鍚庣紑锛堝厑璁?_hd銆乢h 绛夋墍鏈夊甫鍙樹綋鐨勶級
+    // 只检查是否有 _x 变体后缀（允许 _hd、_h 等所有带变体的）
     return this.hasXVariant(baseLower)
   }
 
@@ -1266,51 +1246,53 @@ export class ImageDecryptService {
   private async ensureCacheIndexed(): Promise<void> {
     if (this.cacheIndexed) return
     if (this.cacheIndexing) return this.cacheIndexing
-    this.cacheIndexing = new Promise((resolve) => {
-      // 鎵弿鎵€鏈夊彲鑳界殑缂撳瓨鏍圭洰褰?      const allRoots = this.getAllCacheRoots()
-      this.logInfo('寮€濮嬬储寮曠紦瀛?, { roots: allRoots.length })
+    this.cacheIndexing = (async () => {
+      // 扫描所有可能的缓存根目录
+      const allRoots = this.getAllCacheRoots()
+      this.logInfo('开始索引缓存', { roots: allRoots.length })
 
       for (const root of allRoots) {
         try {
-          this.indexCacheDir(root, 3, 0) // 澧炲姞娣卞害鍒?锛屾敮鎸?sessionId/YYYY-MM 缁撴瀯
+          this.indexCacheDir(root, 3, 0) // 增加深度到 3，支持 sessionId/YYYY-MM 结构
         } catch (e) {
-          this.logError('绱㈠紩鐩綍澶辫触', e, { root })
+          this.logError('索引目录失败', e, { root })
         }
       }
 
-      this.logInfo('缂撳瓨绱㈠紩瀹屾垚', { entries: this.resolvedCache.size })
+      this.logInfo('缓存索引完成', { entries: this.resolvedCache.size })
       this.cacheIndexed = true
       this.cacheIndexing = null
-      resolve()
-    })
+    })()
     return this.cacheIndexing
   }
 
   /**
-   * 鑾峰彇鎵€鏈夊彲鑳界殑缂撳瓨鏍硅矾寰勶紙鐢ㄤ簬鏌ユ壘宸茬紦瀛樼殑鍥剧墖锛?   * 鍖呭惈褰撳墠璺緞銆侀厤缃矾寰勩€佹棫鐗堟湰璺緞
+   * 获取所有可能的缓存根路径（用于查找已缓存的图片）
+   * 包含当前路径、配置路径、旧版本路径
    */
   private getAllCacheRoots(): string[] {
     const roots: string[] = []
     const configured = this.configService.get('cachePath')
     const documentsPath = app.getPath('documents')
 
-    // 涓昏璺緞锛堝綋鍓嶄娇鐢ㄧ殑锛?    const mainRoot = this.getCacheRoot()
+    // 主要路径（当前使用的）
+    const mainRoot = this.getCacheRoot()
     roots.push(mainRoot)
 
-    // 濡傛灉閰嶇疆浜嗚嚜瀹氫箟璺緞锛屼篃妫€鏌ュ叾涓嬬殑 Images
+    // 如果配置了自定义路径，也检查其下的 Images
     if (configured) {
       roots.push(join(configured, 'Images'))
       roots.push(join(configured, 'images'))
     }
 
-    // 榛樿璺緞
+    // 默认路径
     roots.push(join(documentsPath, 'WeFlow', 'Images'))
     roots.push(join(documentsPath, 'WeFlow', 'images'))
 
-    // 鍏煎鏃ц矾寰勶紙濡傛灉鏈夌殑璇濓級
+    // 兼容旧路径（如果有的话）
     roots.push(join(documentsPath, 'WeFlowData', 'Images'))
 
-    // 鍘婚噸骞惰繃婊ゅ瓨鍦ㄧ殑璺緞
+    // 去重并过滤存在的路径
     const uniqueRoots = Array.from(new Set(roots))
     const existingRoots = uniqueRoots.filter(r => existsSync(r))
 
@@ -1392,14 +1374,14 @@ export class ImageDecryptService {
     }
     // version === 2
     if (!aesKey || aesKey.length !== 16) {
-      throw new Error('璇峰埌璁剧疆閰嶇疆鍥剧墖瑙ｅ瘑瀵嗛挜')
+      throw new Error('请到设置配置图片解密密钥')
     }
     return this.decryptDatV4(datPath, xorKey, aesKey)
   }
 
   private getDatVersion(inputPath: string): number {
     if (!existsSync(inputPath)) {
-      throw new Error('鏂囦欢涓嶅瓨鍦?)
+      throw new Error('文件不存在')
     }
     const bytes = readFileSync(inputPath)
     if (bytes.length < 6) {
@@ -1427,7 +1409,7 @@ export class ImageDecryptService {
   private decryptDatV4(inputPath: string, xorKey: number, aesKey: Buffer): Buffer {
     const bytes = readFileSync(inputPath)
     if (bytes.length < 0x0f) {
-      throw new Error('鏂囦欢澶皬锛屾棤娉曡В鏋?)
+      throw new Error('文件太小，无法解析')
     }
 
     const header = bytes.subarray(0, 0x0f)
@@ -1435,11 +1417,13 @@ export class ImageDecryptService {
     const aesSize = this.bytesToInt32(header.subarray(6, 10))
     const xorSize = this.bytesToInt32(header.subarray(10, 14))
 
-    // AES 鏁版嵁闇€瑕佸榻愬埌 16 瀛楄妭锛圥KCS7 濉厖锛?    // 褰?aesSize % 16 === 0 鏃讹紝浠嶉渶瑕侀澶?16 瀛楄妭鐨勫～鍏?    const remainder = ((aesSize % 16) + 16) % 16
+    // AES 数据需要对齐到 16 字节（PKCS7 填充）
+    // 当 aesSize % 16 === 0 时，仍需要额外 16 字节的填充
+    const remainder = ((aesSize % 16) + 16) % 16
     const alignedAesSize = aesSize + (16 - remainder)
 
     if (alignedAesSize > data.length) {
-      throw new Error('鏂囦欢鏍煎紡寮傚父锛欰ES 鏁版嵁闀垮害瓒呰繃鏂囦欢瀹為檯闀垮害')
+      throw new Error('文件格式异常：AES 数据长度超过文件实际长度')
     }
 
     const aesData = data.subarray(0, alignedAesSize)
@@ -1449,13 +1433,13 @@ export class ImageDecryptService {
       decipher.setAutoPadding(false)
       const decrypted = Buffer.concat([decipher.update(aesData), decipher.final()])
 
-      // 浣跨敤 PKCS7 濉厖绉婚櫎
+      // 使用 PKCS7 填充移除
       unpadded = this.strictRemovePadding(decrypted)
     }
 
     const remaining = data.subarray(alignedAesSize)
     if (xorSize < 0 || xorSize > remaining.length) {
-      throw new Error('鏂囦欢鏍煎紡寮傚父锛歑OR 鏁版嵁闀垮害涓嶅悎娉?)
+      throw new Error('文件格式异常：XOR 数据长度不合法')
     }
 
     let rawData = Buffer.alloc(0)
@@ -1463,7 +1447,7 @@ export class ImageDecryptService {
     if (xorSize > 0) {
       const rawLength = remaining.length - xorSize
       if (rawLength < 0) {
-        throw new Error('鏂囦欢鏍煎紡寮傚父锛氬師濮嬫暟鎹暱搴﹀皬浜嶺OR闀垮害')
+        throw new Error('文件格式异常：原始数据长度小于XOR长度')
       }
       rawData = remaining.subarray(0, rawLength)
       const xorData = remaining.subarray(rawLength)
@@ -1481,29 +1465,29 @@ export class ImageDecryptService {
 
   private bytesToInt32(bytes: Buffer): number {
     if (bytes.length !== 4) {
-      throw new Error('闇€瑕?涓瓧鑺?)
+      throw new Error('需要 4 个字节')
     }
     return bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24)
   }
 
   asciiKey16(keyString: string): Buffer {
     if (keyString.length < 16) {
-      throw new Error('AES瀵嗛挜鑷冲皯闇€瑕?6涓瓧绗?)
+      throw new Error('AES密钥至少需要 16 个字符')
     }
     return Buffer.from(keyString, 'ascii').subarray(0, 16)
   }
 
   private strictRemovePadding(data: Buffer): Buffer {
     if (!data.length) {
-      throw new Error('瑙ｅ瘑缁撴灉涓虹┖锛屽～鍏呴潪娉?)
+      throw new Error('解密结果为空，填充非法')
     }
     const paddingLength = data[data.length - 1]
     if (paddingLength === 0 || paddingLength > 16 || paddingLength > data.length) {
-      throw new Error('PKCS7 濉厖闀垮害闈炴硶')
+      throw new Error('PKCS7 填充长度非法')
     }
     for (let i = data.length - paddingLength; i < data.length; i += 1) {
       if (data[i] !== paddingLength) {
-        throw new Error('PKCS7 濉厖鍐呭闈炴硶')
+        throw new Error('PKCS7 填充内容非法')
       }
     }
     return data.subarray(0, data.length - paddingLength)
@@ -1578,7 +1562,7 @@ export class ImageDecryptService {
     return true
   }
 
-  // 淇濈暀鍘熸湁鐨勬壒閲忔娴?XOR 瀵嗛挜鏂规硶锛堢敤浜庡吋瀹癸級
+  // 保留原有的批量检测 XOR 密钥方法（用于兼容）
   async batchDetectXorKey(dirPath: string, maxFiles: number = 100): Promise<number | null> {
     const keyCount: Map<number, number> = new Map()
     let filesChecked = 0
@@ -1656,18 +1640,18 @@ export class ImageDecryptService {
   }
 
   /**
-   * 瑙ｅ寘 wxgf 鏍煎紡
-   * wxgf 鏄井淇＄殑鍥剧墖鏍煎紡锛屽唴閮ㄤ娇鐢?HEVC 缂栫爜
+   * 解包 wxgf 格式
+   * wxgf 是微信的图片格式，内部使用 HEVC 编码
    */
   private async unwrapWxgf(buffer: Buffer): Promise<{ data: Buffer; isWxgf: boolean }> {
-    // 妫€鏌ユ槸鍚︽槸 wxgf 鏍煎紡 (77 78 67 66 = "wxgf")
+    // 检查是否是 wxgf 格式 (77 78 67 66 = "wxgf")
     if (buffer.length < 20 ||
       buffer[0] !== 0x77 || buffer[1] !== 0x78 ||
       buffer[2] !== 0x67 || buffer[3] !== 0x66) {
       return { data: buffer, isWxgf: false }
     }
 
-    // 鍏堝皾璇曟悳绱㈠唴宓岀殑浼犵粺鍥剧墖绛惧悕
+    // 先尝试搜索内嵌的传统图片签名
     for (let i = 4; i < Math.min(buffer.length - 12, 4096); i++) {
       if (buffer[i] === 0xff && buffer[i + 1] === 0xd8 && buffer[i + 2] === 0xff) {
         return { data: buffer.subarray(i), isWxgf: false }
@@ -1678,20 +1662,20 @@ export class ImageDecryptService {
       }
     }
 
-    // 鎻愬彇 HEVC NALU 瑁告祦
+    // 提取 HEVC NALU 裸流
     const hevcData = this.extractHevcNalu(buffer)
     if (!hevcData || hevcData.length < 100) {
       return { data: buffer, isWxgf: true }
     }
 
-    // 灏濊瘯鐢?ffmpeg 杞崲
+    // 尝试用 ffmpeg 转换
     try {
       const jpgData = await this.convertHevcToJpg(hevcData)
       if (jpgData && jpgData.length > 0) {
         return { data: jpgData, isWxgf: false }
       }
     } catch {
-      // ffmpeg 杞崲澶辫触
+      // ffmpeg 转换失败
     }
 
     return { data: hevcData, isWxgf: true }
@@ -1744,25 +1728,26 @@ export class ImageDecryptService {
   }
 
   /**
-   * 鑾峰彇 ffmpeg 鍙墽琛屾枃浠惰矾寰?   */
+   * 获取 ffmpeg 可执行文件路径
+   */
   private getFfmpegPath(): string {
     const staticPath = getStaticFfmpegPath()
-    this.logInfo('ffmpeg 璺緞妫€娴?, { staticPath, exists: staticPath ? existsSync(staticPath) : false })
+    this.logInfo('ffmpeg 路径检测', { staticPath, exists: staticPath ? existsSync(staticPath) : false })
 
     if (staticPath) {
       return staticPath
     }
 
-    // 鍥為€€鍒扮郴缁?ffmpeg
+    // 回退到系统 ffmpeg
     return 'ffmpeg'
   }
 
   /**
-   * 浣跨敤 ffmpeg 灏?HEVC 瑁告祦杞崲涓?JPG
+   * 使用 ffmpeg 将 HEVC 裸流转换为 JPG
    */
   private convertHevcToJpg(hevcData: Buffer): Promise<Buffer | null> {
     const ffmpeg = this.getFfmpegPath()
-    this.logInfo('ffmpeg 杞崲寮€濮?, { ffmpegPath: ffmpeg, hevcSize: hevcData.length })
+    this.logInfo('ffmpeg 转换开始', { ffmpegPath: ffmpeg, hevcSize: hevcData.length })
 
     return new Promise((resolve) => {
       const { spawn } = require('child_process')
@@ -1788,17 +1773,17 @@ export class ImageDecryptService {
 
       proc.on('close', (code: number) => {
         if (code === 0 && chunks.length > 0) {
-          this.logInfo('ffmpeg 杞崲鎴愬姛', { outputSize: Buffer.concat(chunks).length })
+          this.logInfo('ffmpeg 转换成功', { outputSize: Buffer.concat(chunks).length })
           resolve(Buffer.concat(chunks))
         } else {
           const errMsg = Buffer.concat(errChunks).toString()
-          this.logInfo('ffmpeg 杞崲澶辫触', { code, error: errMsg })
+          this.logInfo('ffmpeg 转换失败', { code, error: errMsg })
           resolve(null)
         }
       })
 
       proc.on('error', (err: Error) => {
-        this.logInfo('ffmpeg 杩涚▼閿欒', { error: err.message })
+        this.logInfo('ffmpeg 进程错误', { error: err.message })
         resolve(null)
       })
 
@@ -1807,7 +1792,45 @@ export class ImageDecryptService {
     })
   }
 
-  // 淇濈暀鍘熸湁鐨勮В瀵嗗埌鏂囦欢鏂规硶锛堢敤浜庡吋瀹癸級
+  private looksLikeMd5(s: string): boolean {
+    return /^[a-f0-9]{32}$/i.test(s)
+  }
+
+  private isThumbnailDat(name: string): boolean {
+    const lower = name.toLowerCase()
+    return lower.includes('_t.dat') || lower.includes('.t.dat') || lower.includes('_thumb.dat')
+  }
+
+  private hasXVariant(base: string): boolean {
+    const lower = base.toLowerCase()
+    return lower.endsWith('_h') || lower.endsWith('_hd') || lower.endsWith('_thumb') || lower.endsWith('_t')
+  }
+
+  private isHdPath(p: string): boolean {
+    return p.toLowerCase().includes('_hd') || p.toLowerCase().includes('_h')
+  }
+
+  private isThumbnailPath(p: string): boolean {
+    const lower = p.toLowerCase()
+    return lower.includes('_thumb') || lower.includes('_t') || lower.includes('.t.')
+  }
+
+  private sanitizeDirName(s: string): string {
+    return s.replace(/[<>:"/\\|?*]/g, '_').trim() || 'unknown'
+  }
+
+  private resolveTimeDir(filePath: string): string {
+    try {
+      const stats = statSync(filePath)
+      const d = new Date(stats.mtime)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    } catch {
+      const d = new Date()
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    }
+  }
+
+  // 保留原有的解密到文件方法（用于兼容）
   async decryptToFile(inputPath: string, outputPath: string, xorKey: number, aesKey?: Buffer): Promise<void> {
     const version = this.getDatVersion(inputPath)
     let decrypted: Buffer
@@ -1819,7 +1842,7 @@ export class ImageDecryptService {
       decrypted = this.decryptDatV4(inputPath, xorKey, key)
     } else {
       if (!aesKey || aesKey.length !== 16) {
-        throw new Error('V4鐗堟湰闇€瑕?6瀛楄妭AES瀵嗛挜')
+        throw new Error('V4版本需要 16 字节 AES 密钥')
       }
       decrypted = this.decryptDatV4(inputPath, xorKey, aesKey)
     }
