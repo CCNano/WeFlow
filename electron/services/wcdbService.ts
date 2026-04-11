@@ -490,6 +490,44 @@ export class WcdbService {
   }
 
   /**
+   * SQL Lab: 获取多数据源 Schema 摘要
+   */
+  async sqlLabGetSchema(payload?: { sessionId?: string }): Promise<{
+    success: boolean
+    schema?: {
+      generatedAt: number
+      sources: Array<{
+        kind: 'message' | 'contact' | 'biz'
+        path: string | null
+        label: string
+        tables: Array<{ name: string; columns: string[] }>
+      }>
+    }
+    schemaText?: string
+    error?: string
+  }> {
+    return this.callWorker('sqlLabGetSchema', payload || {})
+  }
+
+  /**
+   * SQL Lab: 执行只读 SQL
+   */
+  async sqlLabExecuteReadonly(payload: {
+    kind: 'message' | 'contact' | 'biz'
+    path?: string | null
+    sql: string
+    limit?: number
+  }): Promise<{
+    success: boolean
+    rows?: any[]
+    columns?: string[]
+    total?: number
+    error?: string
+  }> {
+    return this.callWorker('sqlLabExecuteReadonly', payload)
+  }
+
+  /**
    * 执行 SQL 查询（仅主进程内部使用：fallback/diagnostic/低频兼容）
    */
   async execQuery(kind: string, path: string | null, sql: string, params: any[] = []): Promise<{ success: boolean; rows?: any[]; error?: string }> {
@@ -540,6 +578,42 @@ export class WcdbService {
 
   async searchMessages(keyword: string, sessionId?: string, limit?: number, offset?: number, beginTimestamp?: number, endTimestamp?: number): Promise<{ success: boolean; messages?: any[]; error?: string }> {
     return this.callWorker('searchMessages', { keyword, sessionId, limit, offset, beginTimestamp, endTimestamp })
+  }
+
+  async aiQuerySessionCandidates(options: {
+    keyword: string
+    limit?: number
+    beginTimestamp?: number
+    endTimestamp?: number
+  }): Promise<{ success: boolean; rows?: any[]; error?: string }> {
+    return this.callWorker('aiQuerySessionCandidates', { options })
+  }
+
+  async aiQueryTimeline(options: {
+    sessionId?: string
+    keyword: string
+    limit?: number
+    offset?: number
+    beginTimestamp?: number
+    endTimestamp?: number
+  }): Promise<{ success: boolean; rows?: any[]; error?: string }> {
+    return this.callWorker('aiQueryTimeline', { options })
+  }
+
+  async aiQueryTopicStats(options: {
+    sessionIds: string[]
+    beginTimestamp?: number
+    endTimestamp?: number
+  }): Promise<{ success: boolean; data?: any; error?: string }> {
+    return this.callWorker('aiQueryTopicStats', { options })
+  }
+
+  async aiQuerySourceRefs(options: {
+    sessionIds: string[]
+    beginTimestamp?: number
+    endTimestamp?: number
+  }): Promise<{ success: boolean; data?: any; error?: string }> {
+    return this.callWorker('aiQuerySourceRefs', { options })
   }
 
   /**

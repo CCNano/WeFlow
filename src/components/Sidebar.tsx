@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Home, MessageSquare, BarChart3, FileText, Settings, Download, Aperture, UserCircle, Lock, LockOpen, ChevronUp, RefreshCw, FolderClosed, Footprints } from 'lucide-react'
+import { Home, MessageSquare, BarChart3, FileText, Settings, Download, Aperture, UserCircle, Lock, LockOpen, ChevronUp, RefreshCw, FolderClosed, Footprints, Sparkles } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import { useChatStore } from '../stores/chatStore'
 import { useAnalyticsStore } from '../stores/analyticsStore'
@@ -407,6 +407,16 @@ function Sidebar({ collapsed }: SidebarProps) {
           >
             <span className="nav-icon"><MessageSquare size={20} /></span>
             <span className="nav-label">聊天</span>
+          </NavLink>
+
+          {/* AI分析 */}
+          <NavLink
+            to="/ai-analysis"
+            className={`nav-item ${isActive('/ai-analysis') ? 'active' : ''}`}
+            title={collapsed ? 'AI分析' : undefined}
+          >
+            <span className="nav-icon"><Sparkles size={20} /></span>
+            <span className="nav-label">AI分析</span>
           </NavLink>
 
           {/* 朋友圈 */}

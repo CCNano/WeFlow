@@ -173,6 +173,12 @@ if (parentPort) {
                 case 'closeMessageCursor':
                     result = await core.closeMessageCursor(payload.cursor)
                     break
+                case 'sqlLabGetSchema':
+                    result = await core.sqlLabGetSchema(payload)
+                    break
+                case 'sqlLabExecuteReadonly':
+                    result = await core.sqlLabExecuteReadonly(payload)
+                    break
                 case 'execQuery':
                     result = await core.execQuery(payload.kind, payload.path, payload.sql, payload.params)
                     break
@@ -196,6 +202,18 @@ if (parentPort) {
                     break
                 case 'searchMessages':
                     result = await core.searchMessages(payload.keyword, payload.sessionId, payload.limit, payload.offset, payload.beginTimestamp, payload.endTimestamp)
+                    break
+                case 'aiQuerySessionCandidates':
+                    result = await core.aiQuerySessionCandidates(payload.options || {})
+                    break
+                case 'aiQueryTimeline':
+                    result = await core.aiQueryTimeline(payload.options || {})
+                    break
+                case 'aiQueryTopicStats':
+                    result = await core.aiQueryTopicStats(payload.options || {})
+                    break
+                case 'aiQuerySourceRefs':
+                    result = await core.aiQuerySourceRefs(payload.options || {})
                     break
                 case 'getVoiceData':
                     result = await core.getVoiceData(payload.sessionId, payload.createTime, payload.candidates, payload.localId, payload.svrId)

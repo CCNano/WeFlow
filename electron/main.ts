@@ -31,6 +31,10 @@ import { destroyNotificationWindow, registerNotificationHandlers, showNotificati
 import { httpService } from './services/httpService'
 import { messagePushService } from './services/messagePushService'
 import { insightService } from './services/insightService'
+import { aiAnalysisService } from './services/aiAnalysisService'
+import { aiAgentService } from './services/aiAgentService'
+import { aiAssistantService } from './services/aiAssistantService'
+import { aiSkillService } from './services/aiSkillService'
 import { bizService } from './services/bizService'
 
 // 配置自动更新
@@ -1598,6 +1602,14 @@ const runLegacySnsCacheMigration = async (
   return { copied, skipped, totalFiles: total }
 }
 
+async function ensureAiSqlLabConnected(): Promise<{ success: boolean; error?: string }> {
+  const connectResult = await chatService.connect()
+  if (!connectResult.success) {
+    return { success: false, error: connectResult.error || '数据库未连接' }
+  }
+  return { success: true }
+}
+
 // 注册 IPC 处理器
 function registerIpcHandlers() {
   registerNotificationHandlers()
@@ -1650,6 +1662,164 @@ function registerIpcHandlers() {
   }) => {
     return insightService.generateFootprintInsight(payload)
   })
+
+  // ==================== AI Analysis V2 ====================
+  ipcMain.handle('ai:listConversations', async (_, payload?: { page?: number; pageSize?: number }) =>
+    aiAnalysisService.listConversations(payload?.page, payload?.pageSize)
+  )
+  ipcMain.handle('ai:createConversation', async (_, payload?: { title?: string }) =>
+    aiAnalysisService.createConversation(payload?.title || '')
+  )
+  ipcMain.handle('ai:renameConversation', async (_, payload: { conversationId: string; title: string }) =>
+    aiAnalysisService.renameConversation(payload.conversationId, payload.title)
+  )
+  ipcMain.handle('ai:deleteConversation', async (_, conversationId: string) =>
+    aiAnalysisService.deleteConversation(conversationId)
+  )
+  ipcMain.handle('ai:listMessages', async (_, payload: { conversationId: string; limit?: number }) =>
+    aiAnalysisService.listMessages(payload.conversationId, payload.limit)
+  )
+  ipcMain.handle('ai:exportConversation', async (_, payload: { conversationId: string }) =>
+    aiAnalysisService.exportConversation(payload.conversationId)
+  )
+  ipcMain.handle('ai:getToolCatalog', async () => aiAnalysisService.getToolCatalog())
+  ipcMain.handle('ai:executeTool', async (_, payload: { name: string; args?: Record<string, any> }) =>
+    aiAnalysisService.executeTool(payload.name, payload.args || {})
+  )
+  ipcMain.handle('ai:cancelToolTest', async (_, payload?: { taskId?: string }) =>
+    aiAnalysisService.cancelToolTest(payload?.taskId)
+  )
+
+  ipcMain.handle('agent:runStream', async (event, payload: {
+    mode?: 'chat' | 'sql'
+    conversationId?: string
+    userInput: string
+    assistantId?: string
+    activeSkillId?: string
+    chatScope?: 'group' | 'private'
+    sqlContext?: { schemaText?: string; targetHint?: string }
+  }) => {
+    return aiAgentService.runStream(payload, {
+      onChunk: (chunk) => {
+        try {
+          event.sender.send('agent:stream', chunk)
+        } catch {
+          // ignore sender errors
+        }
+      }
+    })
+  })
+  ipcMain.handle('agent:abort', async (_, payload: { runId?: string; conversationId?: string }) =>
+    aiAgentService.abort(payload || {})
+  )
+
+  ipcMain.handle('assistant:getAll', async () => aiAssistantService.getAll())
+  ipcMain.handle('assistant:getConfig', async (_, id: string) => aiAssistantService.getConfig(id))
+  ipcMain.handle('assistant:create', async (_, payload: any) => aiAssistantService.create(payload || {}))
+  ipcMain.handle('assistant:update', async (_, payload: { id: string; updates: any }) =>
+    aiAssistantService.update(payload.id, payload.updates || {})
+  )
+  ipcMain.handle('assistant:delete', async (_, id: string) => aiAssistantService.delete(id))
+  ipcMain.handle('assistant:reset', async (_, id: string) => aiAssistantService.reset(id))
+  ipcMain.handle('assistant:getBuiltinCatalog', async () => aiAssistantService.getBuiltinCatalog())
+  ipcMain.handle('assistant:getBuiltinToolCatalog', async () => aiAssistantService.getBuiltinToolCatalog())
+  ipcMain.handle('assistant:importFromMd', async (_, rawMd: string) => aiAssistantService.importFromMd(rawMd))
+
+  ipcMain.handle('skill:getAll', async () => aiSkillService.getAll())
+  ipcMain.handle('skill:getConfig', async (_, id: string) => aiSkillService.getConfig(id))
+  ipcMain.handle('skill:create', async (_, rawMd: string) => aiSkillService.create(rawMd))
+  ipcMain.handle('skill:update', async (_, payload: { id: string; rawMd: string }) =>
+    aiSkillService.update(payload.id, payload.rawMd)
+  )
+  ipcMain.handle('skill:delete', async (_, id: string) => aiSkillService.delete(id))
+  ipcMain.handle('skill:getBuiltinCatalog', async () => aiSkillService.getBuiltinCatalog())
+  ipcMain.handle('skill:importFromMd', async (_, rawMd: string) => aiSkillService.importFromMd(rawMd))
+
+  ipcMain.handle('llm:getConfig', async () => ({
+    success: true,
+    config: {
+      apiBaseUrl: String(configService?.get('aiModelApiBaseUrl') || ''),
+      apiKey: String(configService?.get('aiModelApiKey') || ''),
+      model: String(configService?.get('aiModelApiModel') || 'gpt-4o-mini')
+    }
+  }))
+  ipcMain.handle('llm:setConfig', async (_, payload: { apiBaseUrl?: string; apiKey?: string; model?: string }) => {
+    if (typeof payload?.apiBaseUrl === 'string') configService?.set('aiModelApiBaseUrl', payload.apiBaseUrl)
+    if (typeof payload?.apiKey === 'string') configService?.set('aiModelApiKey', payload.apiKey)
+    if (typeof payload?.model === 'string') configService?.set('aiModelApiModel', payload.model)
+    return { success: true }
+  })
+  ipcMain.handle('llm:listModels', async () => ({
+    success: true,
+    models: [
+      { id: 'gpt-4o-mini', label: 'gpt-4o-mini' },
+      { id: 'gpt-4o', label: 'gpt-4o' },
+      { id: 'gpt-5-mini', label: 'gpt-5-mini' }
+    ]
+  }))
+
+  ipcMain.handle('chat:getSchema', async (_, payload?: { sessionId?: string }) => {
+    const connectResult = await ensureAiSqlLabConnected()
+    if (!connectResult.success) {
+      return { success: false, error: connectResult.error || '数据库未连接' }
+    }
+    return wcdbService.sqlLabGetSchema(payload)
+  })
+  ipcMain.handle('chat:executeSQL', async (_, payload: {
+    kind: 'message' | 'contact' | 'biz'
+    path?: string | null
+    sql: string
+    limit?: number
+  }) => {
+    const connectResult = await ensureAiSqlLabConnected()
+    if (!connectResult.success) {
+      return { success: false, error: connectResult.error || '数据库未连接' }
+    }
+    return wcdbService.sqlLabExecuteReadonly(payload)
+  })
+
+  // 兼容层：旧 aiAnalysis API 转调新实现
+  ipcMain.handle('aiAnalysis:listConversations', async (_, payload?: { page?: number; pageSize?: number }) =>
+    aiAnalysisService.listConversations(payload?.page, payload?.pageSize)
+  )
+  ipcMain.handle('aiAnalysis:createConversation', async (_, payload?: { title?: string }) =>
+    aiAnalysisService.createConversation(payload?.title || '')
+  )
+  ipcMain.handle('aiAnalysis:deleteConversation', async (_, conversationId: string) =>
+    aiAnalysisService.deleteConversation(conversationId)
+  )
+  ipcMain.handle('aiAnalysis:listMessages', async (_, payload: { conversationId: string; limit?: number }) =>
+    aiAnalysisService.listMessages(payload.conversationId, payload.limit)
+  )
+  ipcMain.handle('aiAnalysis:sendMessage', async (event, payload: {
+    conversationId: string
+    userInput: string
+    options?: { parentMessageId?: string; persistUserMessage?: boolean; assistantId?: string; activeSkillId?: string }
+  }) =>
+    aiAnalysisService.sendMessage(payload.conversationId, payload.userInput, payload.options, {
+      onRunEvent: (runEvent) => {
+        try {
+          event.sender.send('aiAnalysis:runEvent', runEvent)
+        } catch {
+          // ignore sender errors
+        }
+      }
+    })
+  )
+  ipcMain.handle('aiAnalysis:retryMessage', async (event, payload: { conversationId: string; userMessageId?: string }) =>
+    aiAnalysisService.retryMessage(payload, {
+      onRunEvent: (runEvent) => {
+        try {
+          event.sender.send('aiAnalysis:runEvent', runEvent)
+        } catch {
+          // ignore sender errors
+        }
+      }
+    })
+  )
+  ipcMain.handle('aiAnalysis:abortRun', async (_, payload: { runId?: string; conversationId?: string }) =>
+    aiAnalysisService.abortRun(payload || {})
+  )
 
   ipcMain.handle('config:clear', async () => {
     if (isLaunchAtStartupSupported() && getSystemLaunchAtStartup()) {

@@ -86,6 +86,16 @@ export const CONFIG_KEYS = {
   AI_MODEL_API_BASE_URL: 'aiModelApiBaseUrl',
   AI_MODEL_API_KEY: 'aiModelApiKey',
   AI_MODEL_API_MODEL: 'aiModelApiModel',
+  AI_AGENT_MAX_MESSAGES_PER_REQUEST: 'aiAgentMaxMessagesPerRequest',
+  AI_AGENT_MAX_HISTORY_ROUNDS: 'aiAgentMaxHistoryRounds',
+  AI_AGENT_ENABLE_AUTO_SKILL: 'aiAgentEnableAutoSkill',
+  AI_AGENT_SEARCH_CONTEXT_BEFORE: 'aiAgentSearchContextBefore',
+  AI_AGENT_SEARCH_CONTEXT_AFTER: 'aiAgentSearchContextAfter',
+  AI_AGENT_PREPROCESS_CLEAN: 'aiAgentPreprocessClean',
+  AI_AGENT_PREPROCESS_MERGE: 'aiAgentPreprocessMerge',
+  AI_AGENT_PREPROCESS_DENOISE: 'aiAgentPreprocessDenoise',
+  AI_AGENT_PREPROCESS_DESENSITIZE: 'aiAgentPreprocessDesensitize',
+  AI_AGENT_PREPROCESS_ANONYMIZE: 'aiAgentPreprocessAnonymize',
   AI_INSIGHT_ENABLED: 'aiInsightEnabled',
   AI_INSIGHT_API_BASE_URL: 'aiInsightApiBaseUrl',
   AI_INSIGHT_API_KEY: 'aiInsightApiKey',
@@ -1624,6 +1634,100 @@ export async function getAiModelApiModel(): Promise<string> {
 
 export async function setAiModelApiModel(model: string): Promise<void> {
   await config.set(CONFIG_KEYS.AI_MODEL_API_MODEL, model)
+}
+
+export async function getAiAgentMaxMessagesPerRequest(): Promise<number> {
+  const value = await config.get(CONFIG_KEYS.AI_AGENT_MAX_MESSAGES_PER_REQUEST)
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 120
+}
+
+export async function setAiAgentMaxMessagesPerRequest(value: number): Promise<void> {
+  const normalized = Number.isFinite(value) ? Math.max(20, Math.min(500, Math.floor(value))) : 120
+  await config.set(CONFIG_KEYS.AI_AGENT_MAX_MESSAGES_PER_REQUEST, normalized)
+}
+
+export async function getAiAgentMaxHistoryRounds(): Promise<number> {
+  const value = await config.get(CONFIG_KEYS.AI_AGENT_MAX_HISTORY_ROUNDS)
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 12
+}
+
+export async function setAiAgentMaxHistoryRounds(value: number): Promise<void> {
+  const normalized = Number.isFinite(value) ? Math.max(4, Math.min(60, Math.floor(value))) : 12
+  await config.set(CONFIG_KEYS.AI_AGENT_MAX_HISTORY_ROUNDS, normalized)
+}
+
+export async function getAiAgentEnableAutoSkill(): Promise<boolean> {
+  const value = await config.get(CONFIG_KEYS.AI_AGENT_ENABLE_AUTO_SKILL)
+  return value !== false
+}
+
+export async function setAiAgentEnableAutoSkill(enabled: boolean): Promise<void> {
+  await config.set(CONFIG_KEYS.AI_AGENT_ENABLE_AUTO_SKILL, enabled)
+}
+
+export async function getAiAgentSearchContextBefore(): Promise<number> {
+  const value = await config.get(CONFIG_KEYS.AI_AGENT_SEARCH_CONTEXT_BEFORE)
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 3
+}
+
+export async function setAiAgentSearchContextBefore(value: number): Promise<void> {
+  const normalized = Number.isFinite(value) ? Math.max(0, Math.min(20, Math.floor(value))) : 3
+  await config.set(CONFIG_KEYS.AI_AGENT_SEARCH_CONTEXT_BEFORE, normalized)
+}
+
+export async function getAiAgentSearchContextAfter(): Promise<number> {
+  const value = await config.get(CONFIG_KEYS.AI_AGENT_SEARCH_CONTEXT_AFTER)
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 3
+}
+
+export async function setAiAgentSearchContextAfter(value: number): Promise<void> {
+  const normalized = Number.isFinite(value) ? Math.max(0, Math.min(20, Math.floor(value))) : 3
+  await config.set(CONFIG_KEYS.AI_AGENT_SEARCH_CONTEXT_AFTER, normalized)
+}
+
+export async function getAiAgentPreprocessClean(): Promise<boolean> {
+  const value = await config.get(CONFIG_KEYS.AI_AGENT_PREPROCESS_CLEAN)
+  return value !== false
+}
+
+export async function setAiAgentPreprocessClean(enabled: boolean): Promise<void> {
+  await config.set(CONFIG_KEYS.AI_AGENT_PREPROCESS_CLEAN, enabled)
+}
+
+export async function getAiAgentPreprocessMerge(): Promise<boolean> {
+  const value = await config.get(CONFIG_KEYS.AI_AGENT_PREPROCESS_MERGE)
+  return value !== false
+}
+
+export async function setAiAgentPreprocessMerge(enabled: boolean): Promise<void> {
+  await config.set(CONFIG_KEYS.AI_AGENT_PREPROCESS_MERGE, enabled)
+}
+
+export async function getAiAgentPreprocessDenoise(): Promise<boolean> {
+  const value = await config.get(CONFIG_KEYS.AI_AGENT_PREPROCESS_DENOISE)
+  return value !== false
+}
+
+export async function setAiAgentPreprocessDenoise(enabled: boolean): Promise<void> {
+  await config.set(CONFIG_KEYS.AI_AGENT_PREPROCESS_DENOISE, enabled)
+}
+
+export async function getAiAgentPreprocessDesensitize(): Promise<boolean> {
+  const value = await config.get(CONFIG_KEYS.AI_AGENT_PREPROCESS_DESENSITIZE)
+  return value === true
+}
+
+export async function setAiAgentPreprocessDesensitize(enabled: boolean): Promise<void> {
+  await config.set(CONFIG_KEYS.AI_AGENT_PREPROCESS_DESENSITIZE, enabled)
+}
+
+export async function getAiAgentPreprocessAnonymize(): Promise<boolean> {
+  const value = await config.get(CONFIG_KEYS.AI_AGENT_PREPROCESS_ANONYMIZE)
+  return value === true
+}
+
+export async function setAiAgentPreprocessAnonymize(enabled: boolean): Promise<void> {
+  await config.set(CONFIG_KEYS.AI_AGENT_PREPROCESS_ANONYMIZE, enabled)
 }
 
 export async function getAiInsightEnabled(): Promise<boolean> {

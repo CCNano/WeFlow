@@ -7,6 +7,37 @@ export interface SessionChatWindowOpenOptions {
   initialContactType?: ContactInfo['type']
 }
 
+export interface TokenUsage {
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+}
+
+export interface AgentRuntimeStatus {
+  phase: 'idle' | 'thinking' | 'tool_running' | 'responding' | 'completed' | 'error' | 'aborted'
+  round?: number
+  currentTool?: string
+  toolsUsed?: number
+  updatedAt: number
+  totalUsage?: TokenUsage
+}
+
+export interface AgentStreamChunk {
+  runId: string
+  conversationId?: string
+  type: 'content' | 'think' | 'tool_start' | 'tool_result' | 'status' | 'done' | 'error'
+  content?: string
+  thinkTag?: string
+  thinkDurationMs?: number
+  toolName?: string
+  toolParams?: Record<string, unknown>
+  toolResult?: unknown
+  error?: string
+  isFinished?: boolean
+  usage?: TokenUsage
+  status?: AgentRuntimeStatus
+}
+
 export interface ElectronAPI {
   window: {
     minimize: () => void
@@ -480,6 +511,32 @@ export interface ElectronAPI {
     ) => Promise<{
       success: boolean
       filePath?: string
+      error?: string
+    }>
+    getSchema: (payload?: { sessionId?: string }) => Promise<{
+      success: boolean
+      schema?: {
+        generatedAt: number
+        sources: Array<{
+          kind: 'message' | 'contact' | 'biz'
+          path: string | null
+          label: string
+          tables: Array<{ name: string; columns: string[] }>
+        }>
+      }
+      schemaText?: string
+      error?: string
+    }>
+    executeSQL: (payload: {
+      kind: 'message' | 'contact' | 'biz'
+      path?: string | null
+      sql: string
+      limit?: number
+    }) => Promise<{
+      success: boolean
+      rows?: Record<string, unknown>[]
+      columns?: string[]
+      total?: number
       error?: string
     }>
     onWcdbChange: (callback: (event: any, data: { type: string; json: string }) => void) => () => void
@@ -1093,6 +1150,245 @@ export interface ElectronAPI {
       mentionGroups?: Array<{ displayName?: string; session_id?: string; count?: number }>
     }) => Promise<{ success: boolean; message: string; insight?: string }>
   }
+  aiApi: {
+    listConversations: (payload?: { page?: number; pageSize?: number }) => Promise<{
+      success: boolean
+      conversations?: Array<{
+        conversationId: string
+        title: string
+        createdAt: number
+        updatedAt: number
+        lastMessageAt: number
+      }>
+      error?: string
+    }>
+    createConversation: (payload?: { title?: string }) => Promise<{
+      success: boolean
+      conversationId?: string
+      error?: string
+    }>
+    renameConversation: (payload: { conversationId: string; title: string }) => Promise<{ success: boolean; error?: string }>
+    deleteConversation: (conversationId: string) => Promise<{ success: boolean; error?: string }>
+    listMessages: (payload: { conversationId: string; limit?: number }) => Promise<{
+      success: boolean
+      messages?: Array<{
+        messageId: string
+        conversationId: string
+        role: 'user' | 'assistant' | 'system' | 'tool' | string
+        content: string
+        intentType: string
+        components: any[]
+        toolTrace: any[]
+        usage: Record<string, unknown>
+        error: string
+        parentMessageId: string
+        createdAt: number
+      }>
+      error?: string
+    }>
+    exportConversation: (payload: { conversationId: string }) => Promise<{
+      success: boolean
+      conversation?: { conversationId: string; title: string; updatedAt: number }
+      markdown?: string
+      error?: string
+    }>
+    getToolCatalog: () => Promise<Array<{
+      name: string
+      category: 'core' | 'analysis'
+      description: string
+      parameters: Record<string, unknown>
+    }>>
+    executeTool: (payload: { name: string; args?: Record<string, any> }) => Promise<{
+      success: boolean
+      result?: unknown
+      error?: string
+    }>
+    cancelToolTest: (payload?: { taskId?: string }) => Promise<{ success: boolean }>
+  }
+  agentApi: {
+    runStream: (payload: {
+      mode?: 'chat' | 'sql'
+      conversationId?: string
+      userInput: string
+      assistantId?: string
+      activeSkillId?: string
+      chatScope?: 'group' | 'private'
+      sqlContext?: { schemaText?: string; targetHint?: string }
+    }) => Promise<{ success: boolean; runId: string }>
+    abort: (payload: { runId?: string; conversationId?: string }) => Promise<{ success: boolean }>
+    onStream: (callback: (payload: AgentStreamChunk) => void) => () => void
+  }
+  assistantApi: {
+    getAll: () => Promise<Array<{
+      id: string
+      name: string
+      systemPrompt: string
+      presetQuestions: string[]
+      allowedBuiltinTools?: string[]
+      builtinId?: string
+      applicableChatTypes?: Array<'group' | 'private'>
+      supportedLocales?: string[]
+    }>>
+    getConfig: (id: string) => Promise<{
+      id: string
+      name: string
+      systemPrompt: string
+      presetQuestions: string[]
+      allowedBuiltinTools?: string[]
+      builtinId?: string
+      applicableChatTypes?: Array<'group' | 'private'>
+      supportedLocales?: string[]
+    } | null>
+    create: (payload: any) => Promise<{ success: boolean; id?: string; error?: string }>
+    update: (payload: { id: string; updates: any }) => Promise<{ success: boolean; error?: string }>
+    delete: (id: string) => Promise<{ success: boolean; error?: string }>
+    reset: (id: string) => Promise<{ success: boolean; error?: string }>
+    getBuiltinCatalog: () => Promise<Array<{
+      id: string
+      name: string
+      systemPrompt: string
+      applicableChatTypes?: Array<'group' | 'private'>
+      supportedLocales?: string[]
+      imported: boolean
+    }>>
+    getBuiltinToolCatalog: () => Promise<Array<{ name: string; category: 'core' | 'analysis' }>>
+    importFromMd: (rawMd: string) => Promise<{ success: boolean; id?: string; error?: string }>
+  }
+  skillApi: {
+    getAll: () => Promise<Array<{
+      id: string
+      name: string
+      description: string
+      tags: string[]
+      chatScope: 'all' | 'group' | 'private'
+      tools: string[]
+      builtinId?: string
+    }>>
+    getConfig: (id: string) => Promise<{
+      id: string
+      name: string
+      description: string
+      tags: string[]
+      chatScope: 'all' | 'group' | 'private'
+      tools: string[]
+      prompt: string
+      builtinId?: string
+    } | null>
+    create: (rawMd: string) => Promise<{ success: boolean; id?: string; error?: string }>
+    update: (payload: { id: string; rawMd: string }) => Promise<{ success: boolean; error?: string }>
+    delete: (id: string) => Promise<{ success: boolean; error?: string }>
+    getBuiltinCatalog: () => Promise<Array<{
+      id: string
+      name: string
+      description: string
+      tags: string[]
+      chatScope: 'all' | 'group' | 'private'
+      tools: string[]
+      imported: boolean
+    }>>
+    importFromMd: (rawMd: string) => Promise<{ success: boolean; id?: string; error?: string }>
+  }
+  llmApi: {
+    getConfig: () => Promise<{ success: boolean; config: { apiBaseUrl: string; apiKey: string; model: string } }>
+    setConfig: (payload: { apiBaseUrl?: string; apiKey?: string; model?: string }) => Promise<{ success: boolean }>
+    listModels: () => Promise<{ success: boolean; models: Array<{ id: string; label: string }> }>
+  }
+  aiAnalysis: {
+    listConversations: (payload?: { page?: number; pageSize?: number }) => Promise<{
+      success: boolean
+      conversations?: Array<{
+        conversationId: string
+        title: string
+        createdAt: number
+        updatedAt: number
+        lastMessageAt: number
+      }>
+      error?: string
+    }>
+    createConversation: (payload?: { title?: string }) => Promise<{
+      success: boolean
+      conversationId?: string
+      error?: string
+    }>
+    deleteConversation: (conversationId: string) => Promise<{ success: boolean; error?: string }>
+    listMessages: (payload: { conversationId: string; limit?: number }) => Promise<{
+      success: boolean
+      messages?: Array<{
+        messageId: string
+        conversationId: string
+        role: 'user' | 'assistant' | 'system' | 'tool' | string
+        content: string
+        intentType: string
+        components: any[]
+        toolTrace: any[]
+        usage: Record<string, unknown>
+        error: string
+        parentMessageId: string
+        createdAt: number
+      }>
+      error?: string
+    }>
+    sendMessage: (payload: {
+      conversationId: string
+      userInput: string
+      options?: {
+        parentMessageId?: string
+        persistUserMessage?: boolean
+        assistantId?: string
+        activeSkillId?: string
+        chatScope?: 'group' | 'private'
+      }
+    }) => Promise<{
+      success: boolean
+      result?: {
+        conversationId: string
+        messageId: string
+        assistantText: string
+        components: any[]
+        toolTrace: any[]
+        usage?: {
+          promptTokens?: number
+          completionTokens?: number
+          totalTokens?: number
+        }
+        error?: string
+        createdAt: number
+      }
+      error?: string
+    }>
+    retryMessage: (payload: { conversationId: string; userMessageId?: string }) => Promise<{
+      success: boolean
+      result?: {
+        conversationId: string
+        messageId: string
+        assistantText: string
+        components: any[]
+        toolTrace: any[]
+        usage?: {
+          promptTokens?: number
+          completionTokens?: number
+          totalTokens?: number
+        }
+        error?: string
+        createdAt: number
+      }
+      error?: string
+    }>
+    abortRun: (payload: { runId?: string; conversationId?: string }) => Promise<{ success: boolean }>
+    onRunEvent: (callback: (payload: {
+      runId: string
+      conversationId: string
+      stage: string
+      ts: number
+      message: string
+      intent?: string
+      round?: number
+      toolName?: string
+      status?: string
+      durationMs?: number
+      data?: Record<string, unknown>
+    }) => void) => () => void
+  }
 }
 
 export interface ExportOptions {
@@ -1149,6 +1445,11 @@ export interface WxidInfo {
 declare global {
   interface Window {
     electronAPI: ElectronAPI
+    aiApi: ElectronAPI['aiApi']
+    agentApi: ElectronAPI['agentApi']
+    assistantApi: ElectronAPI['assistantApi']
+    skillApi: ElectronAPI['skillApi']
+    llmApi: ElectronAPI['llmApi']
   }
 
   // Electron 类型声明

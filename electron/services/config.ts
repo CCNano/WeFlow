@@ -74,6 +74,16 @@ interface ConfigSchema {
   aiModelApiBaseUrl: string
   aiModelApiKey: string
   aiModelApiModel: string
+  aiAgentMaxMessagesPerRequest: number
+  aiAgentMaxHistoryRounds: number
+  aiAgentEnableAutoSkill: boolean
+  aiAgentSearchContextBefore: number
+  aiAgentSearchContextAfter: number
+  aiAgentPreprocessClean: boolean
+  aiAgentPreprocessMerge: boolean
+  aiAgentPreprocessDenoise: boolean
+  aiAgentPreprocessDesensitize: boolean
+  aiAgentPreprocessAnonymize: boolean
   aiInsightEnabled: boolean
   aiInsightApiBaseUrl: string
   aiInsightApiKey: string
@@ -184,6 +194,16 @@ export class ConfigService {
       aiModelApiBaseUrl: '',
       aiModelApiKey: '',
       aiModelApiModel: 'gpt-4o-mini',
+      aiAgentMaxMessagesPerRequest: 120,
+      aiAgentMaxHistoryRounds: 12,
+      aiAgentEnableAutoSkill: true,
+      aiAgentSearchContextBefore: 3,
+      aiAgentSearchContextAfter: 3,
+      aiAgentPreprocessClean: true,
+      aiAgentPreprocessMerge: true,
+      aiAgentPreprocessDenoise: true,
+      aiAgentPreprocessDesensitize: false,
+      aiAgentPreprocessAnonymize: false,
       aiInsightEnabled: false,
       aiInsightApiBaseUrl: '',
       aiInsightApiKey: '',

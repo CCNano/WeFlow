@@ -276,6 +276,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       format: 'csv' | 'json',
       filePath: string
     ) => ipcRenderer.invoke('chat:exportMyFootprint', beginTimestamp, endTimestamp, format, filePath),
+    getSchema: (payload?: { sessionId?: string }) => ipcRenderer.invoke('chat:getSchema', payload),
+    executeSQL: (payload: {
+      kind: 'message' | 'contact' | 'biz'
+      path?: string | null
+      sql: string
+      limit?: number
+    }) => ipcRenderer.invoke('chat:executeSQL', payload),
     onWcdbChange: (callback: (event: any, data: { type: string; json: string }) => void) => {
       ipcRenderer.on('wcdb-change', callback)
       return () => ipcRenderer.removeListener('wcdb-change', callback)
@@ -540,5 +547,174 @@ contextBridge.exposeInMainWorld('electronAPI', {
       privateSegments?: Array<{ displayName?: string; session_id?: string; incoming_count?: number; outgoing_count?: number; message_count?: number; replied?: boolean }>
       mentionGroups?: Array<{ displayName?: string; session_id?: string; count?: number }>
     }) => ipcRenderer.invoke('insight:generateFootprintInsight', payload)
+  },
+
+  aiApi: {
+    listConversations: (payload?: { page?: number; pageSize?: number }) =>
+      ipcRenderer.invoke('ai:listConversations', payload),
+    createConversation: (payload?: { title?: string }) =>
+      ipcRenderer.invoke('ai:createConversation', payload),
+    renameConversation: (payload: { conversationId: string; title: string }) =>
+      ipcRenderer.invoke('ai:renameConversation', payload),
+    deleteConversation: (conversationId: string) =>
+      ipcRenderer.invoke('ai:deleteConversation', conversationId),
+    listMessages: (payload: { conversationId: string; limit?: number }) =>
+      ipcRenderer.invoke('ai:listMessages', payload),
+    exportConversation: (payload: { conversationId: string }) =>
+      ipcRenderer.invoke('ai:exportConversation', payload),
+    getToolCatalog: () => ipcRenderer.invoke('ai:getToolCatalog'),
+    executeTool: (payload: { name: string; args?: Record<string, any> }) =>
+      ipcRenderer.invoke('ai:executeTool', payload),
+    cancelToolTest: (payload?: { taskId?: string }) =>
+      ipcRenderer.invoke('ai:cancelToolTest', payload)
+  },
+
+  agentApi: {
+    runStream: (payload: {
+      mode?: 'chat' | 'sql'
+      conversationId?: string
+      userInput: string
+      assistantId?: string
+      activeSkillId?: string
+      chatScope?: 'group' | 'private'
+      sqlContext?: { schemaText?: string; targetHint?: string }
+    }) => ipcRenderer.invoke('agent:runStream', payload),
+    abort: (payload: { runId?: string; conversationId?: string }) =>
+      ipcRenderer.invoke('agent:abort', payload),
+    onStream: (callback: (payload: any) => void) => {
+      const listener = (_: unknown, payload: any) => callback(payload)
+      ipcRenderer.on('agent:stream', listener)
+      return () => ipcRenderer.removeListener('agent:stream', listener)
+    }
+  },
+
+  assistantApi: {
+    getAll: () => ipcRenderer.invoke('assistant:getAll'),
+    getConfig: (id: string) => ipcRenderer.invoke('assistant:getConfig', id),
+    create: (payload: any) => ipcRenderer.invoke('assistant:create', payload),
+    update: (payload: { id: string; updates: any }) => ipcRenderer.invoke('assistant:update', payload),
+    delete: (id: string) => ipcRenderer.invoke('assistant:delete', id),
+    reset: (id: string) => ipcRenderer.invoke('assistant:reset', id),
+    getBuiltinCatalog: () => ipcRenderer.invoke('assistant:getBuiltinCatalog'),
+    getBuiltinToolCatalog: () => ipcRenderer.invoke('assistant:getBuiltinToolCatalog'),
+    importFromMd: (rawMd: string) => ipcRenderer.invoke('assistant:importFromMd', rawMd)
+  },
+
+  skillApi: {
+    getAll: () => ipcRenderer.invoke('skill:getAll'),
+    getConfig: (id: string) => ipcRenderer.invoke('skill:getConfig', id),
+    create: (rawMd: string) => ipcRenderer.invoke('skill:create', rawMd),
+    update: (payload: { id: string; rawMd: string }) => ipcRenderer.invoke('skill:update', payload),
+    delete: (id: string) => ipcRenderer.invoke('skill:delete', id),
+    getBuiltinCatalog: () => ipcRenderer.invoke('skill:getBuiltinCatalog'),
+    importFromMd: (rawMd: string) => ipcRenderer.invoke('skill:importFromMd', rawMd)
+  },
+
+  llmApi: {
+    getConfig: () => ipcRenderer.invoke('llm:getConfig'),
+    setConfig: (payload: { apiBaseUrl?: string; apiKey?: string; model?: string }) =>
+      ipcRenderer.invoke('llm:setConfig', payload),
+    listModels: () => ipcRenderer.invoke('llm:listModels')
+  },
+
+  aiAnalysis: {
+    listConversations: (payload?: { page?: number; pageSize?: number }) =>
+      ipcRenderer.invoke('aiAnalysis:listConversations', payload),
+    createConversation: (payload?: { title?: string }) =>
+      ipcRenderer.invoke('aiAnalysis:createConversation', payload),
+    deleteConversation: (conversationId: string) =>
+      ipcRenderer.invoke('aiAnalysis:deleteConversation', conversationId),
+    listMessages: (payload: { conversationId: string; limit?: number }) =>
+      ipcRenderer.invoke('aiAnalysis:listMessages', payload),
+    sendMessage: (payload: {
+      conversationId: string
+      userInput: string
+      options?: {
+        parentMessageId?: string
+        persistUserMessage?: boolean
+        assistantId?: string
+        activeSkillId?: string
+        chatScope?: 'group' | 'private'
+      }
+    }) => ipcRenderer.invoke('aiAnalysis:sendMessage', payload),
+    retryMessage: (payload: { conversationId: string; userMessageId?: string }) =>
+      ipcRenderer.invoke('aiAnalysis:retryMessage', payload),
+    abortRun: (payload: { runId?: string; conversationId?: string }) =>
+      ipcRenderer.invoke('aiAnalysis:abortRun', payload),
+    onRunEvent: (callback: (payload: {
+      runId: string
+      conversationId: string
+      stage: string
+      ts: number
+      message: string
+      intent?: string
+      round?: number
+      toolName?: string
+      status?: string
+      durationMs?: number
+      data?: Record<string, unknown>
+    }) => void) => {
+      const listener = (_: unknown, payload: any) => callback(payload)
+      ipcRenderer.on('aiAnalysis:runEvent', listener)
+      return () => ipcRenderer.removeListener('aiAnalysis:runEvent', listener)
+    }
   }
+})
+
+contextBridge.exposeInMainWorld('aiApi', {
+  listConversations: (payload?: { page?: number; pageSize?: number }) => ipcRenderer.invoke('ai:listConversations', payload),
+  createConversation: (payload?: { title?: string }) => ipcRenderer.invoke('ai:createConversation', payload),
+  renameConversation: (payload: { conversationId: string; title: string }) => ipcRenderer.invoke('ai:renameConversation', payload),
+  deleteConversation: (conversationId: string) => ipcRenderer.invoke('ai:deleteConversation', conversationId),
+  listMessages: (payload: { conversationId: string; limit?: number }) => ipcRenderer.invoke('ai:listMessages', payload),
+  exportConversation: (payload: { conversationId: string }) => ipcRenderer.invoke('ai:exportConversation', payload),
+  getToolCatalog: () => ipcRenderer.invoke('ai:getToolCatalog'),
+  executeTool: (payload: { name: string; args?: Record<string, any> }) => ipcRenderer.invoke('ai:executeTool', payload),
+  cancelToolTest: (payload?: { taskId?: string }) => ipcRenderer.invoke('ai:cancelToolTest', payload)
+})
+
+contextBridge.exposeInMainWorld('agentApi', {
+  runStream: (payload: {
+    mode?: 'chat' | 'sql'
+    conversationId?: string
+    userInput: string
+    assistantId?: string
+    activeSkillId?: string
+    chatScope?: 'group' | 'private'
+    sqlContext?: { schemaText?: string; targetHint?: string }
+  }) => ipcRenderer.invoke('agent:runStream', payload),
+  abort: (payload: { runId?: string; conversationId?: string }) => ipcRenderer.invoke('agent:abort', payload),
+  onStream: (callback: (payload: any) => void) => {
+    const listener = (_: unknown, payload: any) => callback(payload)
+    ipcRenderer.on('agent:stream', listener)
+    return () => ipcRenderer.removeListener('agent:stream', listener)
+  }
+})
+
+contextBridge.exposeInMainWorld('assistantApi', {
+  getAll: () => ipcRenderer.invoke('assistant:getAll'),
+  getConfig: (id: string) => ipcRenderer.invoke('assistant:getConfig', id),
+  create: (payload: any) => ipcRenderer.invoke('assistant:create', payload),
+  update: (payload: { id: string; updates: any }) => ipcRenderer.invoke('assistant:update', payload),
+  delete: (id: string) => ipcRenderer.invoke('assistant:delete', id),
+  reset: (id: string) => ipcRenderer.invoke('assistant:reset', id),
+  getBuiltinCatalog: () => ipcRenderer.invoke('assistant:getBuiltinCatalog'),
+  getBuiltinToolCatalog: () => ipcRenderer.invoke('assistant:getBuiltinToolCatalog'),
+  importFromMd: (rawMd: string) => ipcRenderer.invoke('assistant:importFromMd', rawMd)
+})
+
+contextBridge.exposeInMainWorld('skillApi', {
+  getAll: () => ipcRenderer.invoke('skill:getAll'),
+  getConfig: (id: string) => ipcRenderer.invoke('skill:getConfig', id),
+  create: (rawMd: string) => ipcRenderer.invoke('skill:create', rawMd),
+  update: (payload: { id: string; rawMd: string }) => ipcRenderer.invoke('skill:update', payload),
+  delete: (id: string) => ipcRenderer.invoke('skill:delete', id),
+  getBuiltinCatalog: () => ipcRenderer.invoke('skill:getBuiltinCatalog'),
+  importFromMd: (rawMd: string) => ipcRenderer.invoke('skill:importFromMd', rawMd)
+})
+
+contextBridge.exposeInMainWorld('llmApi', {
+  getConfig: () => ipcRenderer.invoke('llm:getConfig'),
+  setConfig: (payload: { apiBaseUrl?: string; apiKey?: string; model?: string }) => ipcRenderer.invoke('llm:setConfig', payload),
+  listModels: () => ipcRenderer.invoke('llm:listModels')
 })

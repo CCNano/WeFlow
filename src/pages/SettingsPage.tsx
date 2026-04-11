@@ -240,6 +240,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   const [aiModelApiBaseUrl, setAiModelApiBaseUrl] = useState('')
   const [aiModelApiKey, setAiModelApiKey] = useState('')
   const [aiModelApiModel, setAiModelApiModel] = useState('gpt-4o-mini')
+  const [aiAgentMaxMessagesPerRequest, setAiAgentMaxMessagesPerRequest] = useState(120)
+  const [aiAgentMaxHistoryRounds, setAiAgentMaxHistoryRounds] = useState(12)
+  const [aiAgentEnableAutoSkill, setAiAgentEnableAutoSkill] = useState(true)
+  const [aiAgentSearchContextBefore, setAiAgentSearchContextBefore] = useState(3)
+  const [aiAgentSearchContextAfter, setAiAgentSearchContextAfter] = useState(3)
+  const [aiAgentPreprocessClean, setAiAgentPreprocessClean] = useState(true)
+  const [aiAgentPreprocessMerge, setAiAgentPreprocessMerge] = useState(true)
+  const [aiAgentPreprocessDenoise, setAiAgentPreprocessDenoise] = useState(true)
+  const [aiAgentPreprocessDesensitize, setAiAgentPreprocessDesensitize] = useState(false)
+  const [aiAgentPreprocessAnonymize, setAiAgentPreprocessAnonymize] = useState(false)
   const [aiInsightSilenceDays, setAiInsightSilenceDays] = useState(3)
   const [aiInsightAllowContext, setAiInsightAllowContext] = useState(false)
   const [isTestingInsight, setIsTestingInsight] = useState(false)
@@ -479,6 +489,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       const savedAiModelApiBaseUrl = await configService.getAiModelApiBaseUrl()
       const savedAiModelApiKey = await configService.getAiModelApiKey()
       const savedAiModelApiModel = await configService.getAiModelApiModel()
+      const savedAiAgentMaxMessagesPerRequest = await configService.getAiAgentMaxMessagesPerRequest()
+      const savedAiAgentMaxHistoryRounds = await configService.getAiAgentMaxHistoryRounds()
+      const savedAiAgentEnableAutoSkill = await configService.getAiAgentEnableAutoSkill()
+      const savedAiAgentSearchContextBefore = await configService.getAiAgentSearchContextBefore()
+      const savedAiAgentSearchContextAfter = await configService.getAiAgentSearchContextAfter()
+      const savedAiAgentPreprocessClean = await configService.getAiAgentPreprocessClean()
+      const savedAiAgentPreprocessMerge = await configService.getAiAgentPreprocessMerge()
+      const savedAiAgentPreprocessDenoise = await configService.getAiAgentPreprocessDenoise()
+      const savedAiAgentPreprocessDesensitize = await configService.getAiAgentPreprocessDesensitize()
+      const savedAiAgentPreprocessAnonymize = await configService.getAiAgentPreprocessAnonymize()
       const savedAiInsightSilenceDays = await configService.getAiInsightSilenceDays()
   const savedAiInsightAllowContext = await configService.getAiInsightAllowContext()
   const savedAiInsightWhitelistEnabled = await configService.getAiInsightWhitelistEnabled()
@@ -496,6 +516,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   setAiModelApiBaseUrl(savedAiModelApiBaseUrl)
   setAiModelApiKey(savedAiModelApiKey)
   setAiModelApiModel(savedAiModelApiModel)
+  setAiAgentMaxMessagesPerRequest(savedAiAgentMaxMessagesPerRequest)
+  setAiAgentMaxHistoryRounds(savedAiAgentMaxHistoryRounds)
+  setAiAgentEnableAutoSkill(savedAiAgentEnableAutoSkill)
+  setAiAgentSearchContextBefore(savedAiAgentSearchContextBefore)
+  setAiAgentSearchContextAfter(savedAiAgentSearchContextAfter)
+  setAiAgentPreprocessClean(savedAiAgentPreprocessClean)
+  setAiAgentPreprocessMerge(savedAiAgentPreprocessMerge)
+  setAiAgentPreprocessDenoise(savedAiAgentPreprocessDenoise)
+  setAiAgentPreprocessDesensitize(savedAiAgentPreprocessDesensitize)
+  setAiAgentPreprocessAnonymize(savedAiAgentPreprocessAnonymize)
   setAiInsightSilenceDays(savedAiInsightSilenceDays)
   setAiInsightAllowContext(savedAiInsightAllowContext)
   setAiInsightWhitelistEnabled(savedAiInsightWhitelistEnabled)
@@ -2612,6 +2642,113 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           }}
           style={{ width: 260 }}
         />
+      </div>
+
+      <div className="divider" />
+
+      <div className="form-group">
+        <label>Agent 运行参数</label>
+        <span className="form-hint">
+          控制 AI 分析时的上下文与工具读取规模。
+        </span>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
+          <div>
+            <span style={{ fontSize: 12, opacity: 0.8 }}>单次最大消息数</span>
+            <input
+              type="number"
+              className="field-input"
+              value={aiAgentMaxMessagesPerRequest}
+              min={20}
+              max={500}
+              onChange={(e) => {
+                const val = Math.max(20, Math.min(500, parseInt(e.target.value, 10) || 120))
+                setAiAgentMaxMessagesPerRequest(val)
+                scheduleConfigSave('aiAgentMaxMessagesPerRequest', () => configService.setAiAgentMaxMessagesPerRequest(val))
+              }}
+              style={{ width: 130, marginTop: 6 }}
+            />
+          </div>
+          <div>
+            <span style={{ fontSize: 12, opacity: 0.8 }}>历史轮数上限</span>
+            <input
+              type="number"
+              className="field-input"
+              value={aiAgentMaxHistoryRounds}
+              min={4}
+              max={60}
+              onChange={(e) => {
+                const val = Math.max(4, Math.min(60, parseInt(e.target.value, 10) || 12))
+                setAiAgentMaxHistoryRounds(val)
+                scheduleConfigSave('aiAgentMaxHistoryRounds', () => configService.setAiAgentMaxHistoryRounds(val))
+              }}
+              style={{ width: 130, marginTop: 6 }}
+            />
+          </div>
+          <div>
+            <span style={{ fontSize: 12, opacity: 0.8 }}>搜索上下文前后条数</span>
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              <input
+                type="number"
+                className="field-input"
+                value={aiAgentSearchContextBefore}
+                min={0}
+                max={20}
+                onChange={(e) => {
+                  const val = Math.max(0, Math.min(20, parseInt(e.target.value, 10) || 3))
+                  setAiAgentSearchContextBefore(val)
+                  scheduleConfigSave('aiAgentSearchContextBefore', () => configService.setAiAgentSearchContextBefore(val))
+                }}
+                style={{ width: 90 }}
+              />
+              <input
+                type="number"
+                className="field-input"
+                value={aiAgentSearchContextAfter}
+                min={0}
+                max={20}
+                onChange={(e) => {
+                  const val = Math.max(0, Math.min(20, parseInt(e.target.value, 10) || 3))
+                  setAiAgentSearchContextAfter(val)
+                  scheduleConfigSave('aiAgentSearchContextAfter', () => configService.setAiAgentSearchContextAfter(val))
+                }}
+                style={{ width: 90 }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label>技能与预处理</label>
+        <span className="form-hint">
+          自动技能会让 Agent 根据问题动态调用 <code>activate_skill</code>；预处理用于清洗/合并/去噪/脱敏/匿名。
+        </span>
+        <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+          {[
+            ['自动技能 Auto Skill', aiAgentEnableAutoSkill, setAiAgentEnableAutoSkill, () => configService.setAiAgentEnableAutoSkill(!aiAgentEnableAutoSkill), 'aiAgentEnableAutoSkill'],
+            ['清洗', aiAgentPreprocessClean, setAiAgentPreprocessClean, () => configService.setAiAgentPreprocessClean(!aiAgentPreprocessClean), 'aiAgentPreprocessClean'],
+            ['合并', aiAgentPreprocessMerge, setAiAgentPreprocessMerge, () => configService.setAiAgentPreprocessMerge(!aiAgentPreprocessMerge), 'aiAgentPreprocessMerge'],
+            ['去噪', aiAgentPreprocessDenoise, setAiAgentPreprocessDenoise, () => configService.setAiAgentPreprocessDenoise(!aiAgentPreprocessDenoise), 'aiAgentPreprocessDenoise'],
+            ['脱敏', aiAgentPreprocessDesensitize, setAiAgentPreprocessDesensitize, () => configService.setAiAgentPreprocessDesensitize(!aiAgentPreprocessDesensitize), 'aiAgentPreprocessDesensitize'],
+            ['匿名', aiAgentPreprocessAnonymize, setAiAgentPreprocessAnonymize, () => configService.setAiAgentPreprocessAnonymize(!aiAgentPreprocessAnonymize), 'aiAgentPreprocessAnonymize']
+          ].map(([label, value, setter, saveFn, key]) => (
+            <div key={key as string} className="log-toggle-line">
+              <span className="log-status">{label as string}</span>
+              <label className="switch">
+                <input
+                  type="checkbox"
+                  checked={value as boolean}
+                  onChange={() => {
+                    const next = !(value as boolean)
+                    ;(setter as (value: boolean) => void)(next)
+                    scheduleConfigSave(key as string, saveFn as () => Promise<void>)
+                  }}
+                />
+                <span className="switch-slider" />
+              </label>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="form-group">

@@ -85,6 +85,10 @@ export class WcdbCore {
   private wcdbScanMediaStream: any = null
   private wcdbGetHeadImageBuffers: any = null
   private wcdbSearchMessages: any = null
+  private wcdbAiQuerySessionCandidates: any = null
+  private wcdbAiQueryTimeline: any = null
+  private wcdbAiQueryTopicStats: any = null
+  private wcdbAiQuerySourceRefs: any = null
   private wcdbGetSnsTimeline: any = null
   private wcdbGetSnsAnnualStats: any = null
   private wcdbGetSnsUsernames: any = null
@@ -1059,6 +1063,26 @@ export class WcdbCore {
         this.wcdbSearchMessages = this.lib.func('int32 wcdb_search_messages(int64 handle, const char* sessionId, const char* keyword, int32 limit, int32 offset, int32 beginTimestamp, int32 endTimestamp, _Out_ void** outJson)')
       } catch {
         this.wcdbSearchMessages = null
+      }
+      try {
+        this.wcdbAiQuerySessionCandidates = this.lib.func('int32 wcdb_ai_query_session_candidates(int64 handle, const char* optionsJson, _Out_ void** outJson)')
+      } catch {
+        this.wcdbAiQuerySessionCandidates = null
+      }
+      try {
+        this.wcdbAiQueryTimeline = this.lib.func('int32 wcdb_ai_query_timeline(int64 handle, const char* optionsJson, _Out_ void** outJson)')
+      } catch {
+        this.wcdbAiQueryTimeline = null
+      }
+      try {
+        this.wcdbAiQueryTopicStats = this.lib.func('int32 wcdb_ai_query_topic_stats(int64 handle, const char* optionsJson, _Out_ void** outJson)')
+      } catch {
+        this.wcdbAiQueryTopicStats = null
+      }
+      try {
+        this.wcdbAiQuerySourceRefs = this.lib.func('int32 wcdb_ai_query_source_refs(int64 handle, const char* optionsJson, _Out_ void** outJson)')
+      } catch {
+        this.wcdbAiQuerySourceRefs = null
       }
 
       // wcdb_status wcdb_get_sns_timeline(wcdb_handle handle, int32_t limit, int32_t offset, const char* username, const char* keyword, int32_t start_time, int32_t end_time, char** out_json)
@@ -3370,6 +3394,204 @@ export class WcdbCore {
     }
   }
 
+  private normalizeSqlIdentifier(name: string): string {
+    return `"${String(name || '').replace(/"/g, '""')}"`
+  }
+
+  private stripSqlComments(sql: string): string {
+    return String(sql || '')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/--[^\n\r]*/g, ' ')
+      .trim()
+  }
+
+  private isSqlLabReadOnly(sql: string): boolean {
+    const normalized = this.stripSqlComments(sql).trim()
+    if (!normalized) return false
+    if (normalized.includes('\u0000')) return false
+    const hasMultipleStatements = /;[\s\r\n]*\S/.test(normalized)
+    if (hasMultipleStatements) return false
+    const lower = normalized.toLowerCase()
+    if (/(insert|update|delete|drop|alter|create|attach|detach|replace|truncate|reindex|vacuum|analyze|begin|commit|rollback|savepoint|release)\b/.test(lower)) {
+      return false
+    }
+    if (/pragma\s+.*(writable_schema|journal_mode|locking_mode|foreign_keys)\s*=/.test(lower)) {
+      return false
+    }
+    return /^(select|with|pragma|explain)\b/.test(lower)
+  }
+
+  private async sqlLabListTablesForSource(
+    kind: 'message' | 'contact' | 'biz',
+    path: string | null,
+    maxTables: number = 60,
+    maxColumns: number = 120
+  ): Promise<Array<{ name: string; columns: string[] }>> {
+    const tableRows = await this.execQuery(
+      kind,
+      path,
+      `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT ${Math.max(1, maxTables)}`
+    )
+    if (!tableRows.success || !Array.isArray(tableRows.rows)) return []
+
+    const tables: Array<{ name: string; columns: string[] }> = []
+    for (const row of tableRows.rows) {
+      const tableName = String((row as any)?.name || '').trim()
+      if (!tableName) continue
+      const pragma = await this.execQuery(kind, path, `PRAGMA table_info(${this.normalizeSqlIdentifier(tableName)})`)
+      const columns = pragma.success && Array.isArray(pragma.rows)
+        ? pragma.rows
+            .map((item: any) => String(item?.name || '').trim())
+            .filter(Boolean)
+            .slice(0, maxColumns)
+        : []
+      tables.push({ name: tableName, columns })
+    }
+
+    return tables
+  }
+
+  async sqlLabGetSchema(payload?: { sessionId?: string }): Promise<{
+    success: boolean
+    schema?: {
+      generatedAt: number
+      sources: Array<{
+        kind: 'message' | 'contact' | 'biz'
+        path: string | null
+        label: string
+        tables: Array<{ name: string; columns: string[] }>
+      }>
+    }
+    schemaText?: string
+    error?: string
+  }> {
+    if (!this.ensureReady()) {
+      return { success: false, error: 'WCDB 未连接' }
+    }
+
+    try {
+      const sessionId = String(payload?.sessionId || '').trim()
+      const sources: Array<{
+        kind: 'message' | 'contact' | 'biz'
+        path: string | null
+        label: string
+        tables: Array<{ name: string; columns: string[] }>
+      }> = []
+
+      if (sessionId) {
+        const tableStats = await this.getMessageTableStats(sessionId)
+        const tableEntries = tableStats.success && Array.isArray(tableStats.tables) ? tableStats.tables : []
+        const dbPathSet = new Set<string>()
+        for (const entry of tableEntries) {
+          const dbPath = String((entry as any)?.db_path || '').trim()
+          if (!dbPath) continue
+          dbPathSet.add(dbPath)
+        }
+        for (const dbPath of Array.from(dbPathSet).slice(0, 8)) {
+          sources.push({
+            kind: 'message',
+            path: dbPath,
+            label: dbPath.split(/[\\/]/).pop() || dbPath,
+            tables: await this.sqlLabListTablesForSource('message', dbPath)
+          })
+        }
+      } else {
+        const messageDbs = await this.listMessageDbs()
+        const paths = messageDbs.success && Array.isArray(messageDbs.data) ? messageDbs.data : []
+        for (const dbPath of paths.slice(0, 8)) {
+          sources.push({
+            kind: 'message',
+            path: dbPath,
+            label: dbPath.split(/[\\/]/).pop() || dbPath,
+            tables: await this.sqlLabListTablesForSource('message', dbPath)
+          })
+        }
+      }
+
+      sources.push({
+        kind: 'contact',
+        path: null,
+        label: 'contact',
+        tables: await this.sqlLabListTablesForSource('contact', null)
+      })
+      sources.push({
+        kind: 'biz',
+        path: null,
+        label: 'biz',
+        tables: await this.sqlLabListTablesForSource('biz', null)
+      })
+
+      const schemaText = sources
+        .map((source) => {
+          const tableLines = source.tables
+            .map((table) => `- ${table.name} (${table.columns.join(', ')})`)
+            .join('\n')
+          return `[${source.kind}] ${source.label}\n${tableLines}`
+        })
+        .join('\n\n')
+
+      return {
+        success: true,
+        schema: {
+          generatedAt: Date.now(),
+          sources
+        },
+        schemaText
+      }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  }
+
+  async sqlLabExecuteReadonly(payload: {
+    kind: 'message' | 'contact' | 'biz'
+    path?: string | null
+    sql: string
+    limit?: number
+  }): Promise<{
+    success: boolean
+    rows?: any[]
+    columns?: string[]
+    total?: number
+    error?: string
+  }> {
+    if (!this.ensureReady()) {
+      return { success: false, error: 'WCDB 未连接' }
+    }
+
+    try {
+      const sql = String(payload?.sql || '').trim()
+      if (!this.isSqlLabReadOnly(sql)) {
+        return { success: false, error: '仅允许只读 SQL（SELECT/WITH/PRAGMA/EXPLAIN）' }
+      }
+
+      const kind = payload?.kind === 'contact' || payload?.kind === 'biz' ? payload.kind : 'message'
+      const path = kind === 'message'
+        ? (payload?.path == null ? null : String(payload.path))
+        : null
+      const limit = Math.max(1, Math.min(1000, Number(payload?.limit || 200)))
+      const sqlNoTail = sql.replace(/;+\s*$/, '')
+      const lower = sqlNoTail.toLowerCase()
+      const executable = /^(select|with)\b/.test(lower)
+        ? `SELECT * FROM (${sqlNoTail}) LIMIT ${limit}`
+        : sqlNoTail
+
+      const result = await this.execQuery(kind, path, executable)
+      if (!result.success) {
+        return { success: false, error: result.error || '执行 SQL 失败' }
+      }
+      const rows = Array.isArray(result.rows) ? result.rows : []
+      return {
+        success: true,
+        rows,
+        columns: rows[0] && typeof rows[0] === 'object' ? Object.keys(rows[0] as Record<string, unknown>) : [],
+        total: rows.length
+      }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  }
+
   async execQuery(kind: string, path: string | null, sql: string, params: any[] = []): Promise<{ success: boolean; rows?: any[]; error?: string }> {
     if (!this.ensureReady()) {
       return { success: false, error: 'WCDB 未连接' }
@@ -3974,6 +4196,110 @@ export class WcdbCore {
       if (!jsonStr) return { success: false, error: '解析搜索结果失败' }
       const messages = this.parseMessageJson(jsonStr)
       return { success: true, messages }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  }
+
+  async aiQuerySessionCandidates(options: {
+    keyword: string
+    limit?: number
+    beginTimestamp?: number
+    endTimestamp?: number
+  }): Promise<{ success: boolean; rows?: any[]; error?: string }> {
+    if (!this.ensureReady()) return { success: false, error: 'WCDB 未连接' }
+    if (!this.wcdbAiQuerySessionCandidates) return { success: false, error: '当前数据服务版本不支持 AI 候选会话查询' }
+    try {
+      const outPtr = [null as any]
+      const result = this.wcdbAiQuerySessionCandidates(this.handle, JSON.stringify({
+        keyword: options.keyword || '',
+        limit: options.limit || 12,
+        begin_timestamp: options.beginTimestamp || 0,
+        end_timestamp: options.endTimestamp || 0
+      }), outPtr)
+      if (result !== 0 || !outPtr[0]) return { success: false, error: `AI 候选会话查询失败: ${result}` }
+      const jsonStr = this.decodeJsonPtr(outPtr[0])
+      if (!jsonStr) return { success: false, error: '解析 AI 候选会话结果失败' }
+      const rows = JSON.parse(jsonStr)
+      return { success: true, rows: Array.isArray(rows) ? rows : [] }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  }
+
+  async aiQueryTimeline(options: {
+    sessionId?: string
+    keyword: string
+    limit?: number
+    offset?: number
+    beginTimestamp?: number
+    endTimestamp?: number
+  }): Promise<{ success: boolean; rows?: any[]; error?: string }> {
+    if (!this.ensureReady()) return { success: false, error: 'WCDB 未连接' }
+    if (!this.wcdbAiQueryTimeline) return { success: false, error: '当前数据服务版本不支持 AI 时间轴查询' }
+    try {
+      const outPtr = [null as any]
+      const result = this.wcdbAiQueryTimeline(this.handle, JSON.stringify({
+        session_id: options.sessionId || '',
+        keyword: options.keyword || '',
+        limit: options.limit || 120,
+        offset: options.offset || 0,
+        begin_timestamp: options.beginTimestamp || 0,
+        end_timestamp: options.endTimestamp || 0
+      }), outPtr)
+      if (result !== 0 || !outPtr[0]) return { success: false, error: `AI 时间轴查询失败: ${result}` }
+      const jsonStr = this.decodeJsonPtr(outPtr[0])
+      if (!jsonStr) return { success: false, error: '解析 AI 时间轴结果失败' }
+      const rows = this.parseMessageJson(jsonStr)
+      return { success: true, rows }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  }
+
+  async aiQueryTopicStats(options: {
+    sessionIds: string[]
+    beginTimestamp?: number
+    endTimestamp?: number
+  }): Promise<{ success: boolean; data?: any; error?: string }> {
+    if (!this.ensureReady()) return { success: false, error: 'WCDB 未连接' }
+    if (!this.wcdbAiQueryTopicStats) return { success: false, error: '当前数据服务版本不支持 AI 主题统计' }
+    try {
+      const outPtr = [null as any]
+      const result = this.wcdbAiQueryTopicStats(this.handle, JSON.stringify({
+        session_ids_json: JSON.stringify(options.sessionIds || []),
+        begin_timestamp: options.beginTimestamp || 0,
+        end_timestamp: options.endTimestamp || 0
+      }), outPtr)
+      if (result !== 0 || !outPtr[0]) return { success: false, error: `AI 主题统计失败: ${result}` }
+      const jsonStr = this.decodeJsonPtr(outPtr[0])
+      if (!jsonStr) return { success: false, error: '解析 AI 主题统计失败' }
+      const data = JSON.parse(jsonStr)
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  }
+
+  async aiQuerySourceRefs(options: {
+    sessionIds: string[]
+    beginTimestamp?: number
+    endTimestamp?: number
+  }): Promise<{ success: boolean; data?: any; error?: string }> {
+    if (!this.ensureReady()) return { success: false, error: 'WCDB 未连接' }
+    if (!this.wcdbAiQuerySourceRefs) return { success: false, error: '当前数据服务版本不支持 AI 来源引用查询' }
+    try {
+      const outPtr = [null as any]
+      const result = this.wcdbAiQuerySourceRefs(this.handle, JSON.stringify({
+        session_ids_json: JSON.stringify(options.sessionIds || []),
+        begin_timestamp: options.beginTimestamp || 0,
+        end_timestamp: options.endTimestamp || 0
+      }), outPtr)
+      if (result !== 0 || !outPtr[0]) return { success: false, error: `AI 来源引用查询失败: ${result}` }
+      const jsonStr = this.decodeJsonPtr(outPtr[0])
+      if (!jsonStr) return { success: false, error: '解析 AI 来源引用查询失败' }
+      const data = JSON.parse(jsonStr)
+      return { success: true, data }
     } catch (e) {
       return { success: false, error: String(e) }
     }

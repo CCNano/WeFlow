@@ -6,6 +6,7 @@ import RouteGuard from './components/RouteGuard'
 import WelcomePage from './pages/WelcomePage'
 import HomePage from './pages/HomePage'
 import ChatPage from './pages/ChatPage'
+import AiAnalysisPage from './pages/AiAnalysisPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import AnalyticsWelcomePage from './pages/AnalyticsWelcomePage'
 import ChatAnalyticsHubPage from './pages/ChatAnalyticsHubPage'
@@ -679,6 +680,7 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/home" element={<HomePage />} />
               <Route path="/chat" element={<ChatPage />} />
+              <Route path="/ai-analysis" element={<AiAnalysisPage />} />
 
               <Route path="/analytics" element={<ChatAnalyticsHubPage />} />
               <Route path="/analytics/private" element={<AnalyticsWelcomePage />} />
