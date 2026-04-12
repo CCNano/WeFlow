@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/hicccc77/WeFlow"
+    "url": "https://github.com/Jasonzhu1207/WeFlow"
   },
   "//": "二改不应改变此处的作者与应用信息",
   "scripts": {
@@ -23,7 +23,6 @@
     "electron:build": "npm run build"
   },
   "dependencies": {
-    "@vscode/sudo-prompt": "^9.3.2",
     "echarts": "^6.0.0",
     "echarts-for-react": "^3.0.2",
     "electron-store": "^11.0.2",
@@ -42,8 +41,9 @@
     "react-router-dom": "^7.14.0",
     "react-virtuoso": "^4.18.1",
     "remark-gfm": "^4.0.1",
-    "sherpa-onnx-node": "^1.12.35",
+    "sherpa-onnx-node": "^1.10.38",
     "silk-wasm": "^3.7.1",
+    "sudo-prompt": "^9.2.1",
     "wechat-emojis": "^1.0.2",
     "zustand": "^5.0.2"
   },
@@ -54,11 +54,11 @@
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^41.1.1",
     "electron-builder": "^26.8.1",
-    "sass": "^1.99.0",
+    "sass": "^1.98.0",
     "sharp": "^0.34.5",
     "typescript": "^6.0.2",
-    "vite": "^7.3.2",
-    "vite-plugin-electron": "^0.29.1",
+    "vite": "^7.0.0",
+    "vite-plugin-electron": "^0.28.8",
     "vite-plugin-electron-renderer": "^0.14.6"
   },
   "pnpm": {
@@ -70,16 +70,14 @@
       "lodash": ">=4.17.21",
       "brace-expansion": ">=1.1.11",
       "picomatch": ">=2.3.1",
-      "ajv": ">=8.18.0",
-      "ajv-keywords@3>ajv": "^6.12.6",
-      "@develar/schema-utils>ajv": "^6.12.6"
+      "ajv": ">=8.18.0"
     }
   },
   "build": {
     "appId": "com.WeFlow.app",
     "publish": {
       "provider": "github",
-      "owner": "hicccc77",
+      "owner": "Jasonzhu1207",
       "repo": "WeFlow",
       "releaseType": "release"
     },
@@ -98,7 +96,7 @@
       "gatekeeperAssess": false,
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.plist",
-      "icon": "resources/icons/macos/icon.icns"
+      "icon": "resources/icon.icns"
     },
     "win": {
       "target": [
@@ -107,19 +105,19 @@
       "icon": "public/icon.ico",
       "extraFiles": [
         {
-          "from": "resources/runtime/win32/msvcp140.dll",
+          "from": "resources/msvcp140.dll",
           "to": "."
         },
         {
-          "from": "resources/runtime/win32/msvcp140_1.dll",
+          "from": "resources/msvcp140_1.dll",
           "to": "."
         },
         {
-          "from": "resources/runtime/win32/vcruntime140.dll",
+          "from": "resources/vcruntime140.dll",
           "to": "."
         },
         {
-          "from": "resources/runtime/win32/vcruntime140_1.dll",
+          "from": "resources/vcruntime140_1.dll",
           "to": "."
         }
       ]
@@ -135,7 +133,7 @@
       "synopsis": "WeFlow for Linux",
       "extraFiles": [
         {
-          "from": "resources/installer/linux/install.sh",
+          "from": "resources/linux/install.sh",
           "to": "install.sh"
         }
       ]
@@ -190,7 +188,7 @@
       "node_modules/sherpa-onnx-*/**/*",
       "node_modules/ffmpeg-static/**/*"
     ],
-    "icon": "resources/icons/macos/icon.icns"
+    "icon": "resources/icon.icns"
   },
   "overrides": {
     "picomatch": "^4.0.4",

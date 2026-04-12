@@ -286,6 +286,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   const [aiInsightTelegramChatIds, setAiInsightTelegramChatIds] = useState('')
   const [aiFootprintEnabled, setAiFootprintEnabled] = useState(false)
   const [aiFootprintSystemPrompt, setAiFootprintSystemPrompt] = useState('')
+  const [aiInsightDebugLogEnabled, setAiInsightDebugLogEnabled] = useState(false)
 
   // 检查 Hello 可用性
   useEffect(() => {
@@ -516,35 +517,38 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       const savedAiModelApiKey = await configService.getAiModelApiKey()
       const savedAiModelApiModel = await configService.getAiModelApiModel()
       const savedAiInsightSilenceDays = await configService.getAiInsightSilenceDays()
-  const savedAiInsightAllowContext = await configService.getAiInsightAllowContext()
-  const savedAiInsightWhitelistEnabled = await configService.getAiInsightWhitelistEnabled()
-  const savedAiInsightWhitelist = await configService.getAiInsightWhitelist()
-  const savedAiInsightCooldownMinutes = await configService.getAiInsightCooldownMinutes()
-  const savedAiInsightScanIntervalHours = await configService.getAiInsightScanIntervalHours()
-  const savedAiInsightContextCount = await configService.getAiInsightContextCount()
-  const savedAiInsightSystemPrompt = await configService.getAiInsightSystemPrompt()
-  const savedAiInsightTelegramEnabled = await configService.getAiInsightTelegramEnabled()
-  const savedAiInsightTelegramToken = await configService.getAiInsightTelegramToken()
-  const savedAiInsightTelegramChatIds = await configService.getAiInsightTelegramChatIds()
-  const savedAiFootprintEnabled = await configService.getAiFootprintEnabled()
-  const savedAiFootprintSystemPrompt = await configService.getAiFootprintSystemPrompt()
-  setAiInsightEnabled(savedAiInsightEnabled)
-  setAiModelApiBaseUrl(savedAiModelApiBaseUrl)
-  setAiModelApiKey(savedAiModelApiKey)
-  setAiModelApiModel(savedAiModelApiModel)
-  setAiInsightSilenceDays(savedAiInsightSilenceDays)
-  setAiInsightAllowContext(savedAiInsightAllowContext)
-  setAiInsightWhitelistEnabled(savedAiInsightWhitelistEnabled)
-  setAiInsightWhitelist(new Set(savedAiInsightWhitelist))
-  setAiInsightCooldownMinutes(savedAiInsightCooldownMinutes)
-  setAiInsightScanIntervalHours(savedAiInsightScanIntervalHours)
-  setAiInsightContextCount(savedAiInsightContextCount)
-  setAiInsightSystemPrompt(savedAiInsightSystemPrompt)
-  setAiInsightTelegramEnabled(savedAiInsightTelegramEnabled)
-  setAiInsightTelegramToken(savedAiInsightTelegramToken)
-  setAiInsightTelegramChatIds(savedAiInsightTelegramChatIds)
-  setAiFootprintEnabled(savedAiFootprintEnabled)
-  setAiFootprintSystemPrompt(savedAiFootprintSystemPrompt)
+      const savedAiInsightAllowContext = await configService.getAiInsightAllowContext()
+      const savedAiInsightWhitelistEnabled = await configService.getAiInsightWhitelistEnabled()
+      const savedAiInsightWhitelist = await configService.getAiInsightWhitelist()
+      const savedAiInsightCooldownMinutes = await configService.getAiInsightCooldownMinutes()
+      const savedAiInsightScanIntervalHours = await configService.getAiInsightScanIntervalHours()
+      const savedAiInsightContextCount = await configService.getAiInsightContextCount()
+      const savedAiInsightSystemPrompt = await configService.getAiInsightSystemPrompt()
+      const savedAiInsightTelegramEnabled = await configService.getAiInsightTelegramEnabled()
+      const savedAiInsightTelegramToken = await configService.getAiInsightTelegramToken()
+      const savedAiInsightTelegramChatIds = await configService.getAiInsightTelegramChatIds()
+      const savedAiFootprintEnabled = await configService.getAiFootprintEnabled()
+      const savedAiFootprintSystemPrompt = await configService.getAiFootprintSystemPrompt()
+      const savedAiInsightDebugLogEnabled = await configService.getAiInsightDebugLogEnabled()
+
+      setAiInsightEnabled(savedAiInsightEnabled)
+      setAiModelApiBaseUrl(savedAiModelApiBaseUrl)
+      setAiModelApiKey(savedAiModelApiKey)
+      setAiModelApiModel(savedAiModelApiModel)
+      setAiInsightSilenceDays(savedAiInsightSilenceDays)
+      setAiInsightAllowContext(savedAiInsightAllowContext)
+      setAiInsightWhitelistEnabled(savedAiInsightWhitelistEnabled)
+      setAiInsightWhitelist(new Set(savedAiInsightWhitelist))
+      setAiInsightCooldownMinutes(savedAiInsightCooldownMinutes)
+      setAiInsightScanIntervalHours(savedAiInsightScanIntervalHours)
+      setAiInsightContextCount(savedAiInsightContextCount)
+      setAiInsightSystemPrompt(savedAiInsightSystemPrompt)
+      setAiInsightTelegramEnabled(savedAiInsightTelegramEnabled)
+      setAiInsightTelegramToken(savedAiInsightTelegramToken)
+      setAiInsightTelegramChatIds(savedAiInsightTelegramChatIds)
+      setAiFootprintEnabled(savedAiFootprintEnabled)
+      setAiFootprintSystemPrompt(savedAiFootprintSystemPrompt)
+      setAiInsightDebugLogEnabled(savedAiInsightDebugLogEnabled)
 
     } catch (e: any) {
       console.error('加载配置失败:', e)
@@ -2722,7 +2726,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     setIsTestingInsight(true)
     setInsightTestResult(null)
     try {
-      const result = await (window.electronAPI as any).insight.testConnection()
+      const result = await window.electronAPI.insight.testConnection()
       setInsightTestResult(result)
     } catch (e: any) {
       setInsightTestResult({ success: false, message: `调用失败：${e?.message || String(e)}` })
@@ -2883,7 +2887,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               setIsTriggeringInsightTest(true)
               setInsightTriggerResult(null)
               try {
-                const result = await (window.electronAPI as any).insight.triggerTest()
+                const result = await window.electronAPI.insight.triggerTest()
                 setInsightTriggerResult(result)
               } catch (e: any) {
                 setInsightTriggerResult({ success: false, message: `调用失败：${e?.message || String(e)}` })
@@ -3338,6 +3342,32 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               <strong>隐私</strong> — 所有分析请求均直接从你的电脑发往你填写的 API 地址，不经过任何 WeFlow 服务器。
             </p>
           </div>
+        </div>
+      </div>
+
+      <div className="divider" />
+
+      <div className="form-group">
+        <label>调试日志导出</label>
+        <span className="form-hint">
+          开启后，AI 见解链路会额外把完整调试日志写到桌面上的 <code>weflow-ai-insight-debug-YYYY-MM-DD.log</code>。
+          其中会包含发送给 AI 的完整提示词原文、近期对话上下文原文和模型输出原文，但不会记录 API Key。
+        </span>
+        <div className="log-toggle-line">
+          <span className="log-status">{aiInsightDebugLogEnabled ? '已开启' : '已关闭'}</span>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={aiInsightDebugLogEnabled}
+              onChange={async (e) => {
+                const val = e.target.checked
+                setAiInsightDebugLogEnabled(val)
+                await configService.setAiInsightDebugLogEnabled(val)
+                showMessage(val ? '已开启 AI 见解调试日志，后续日志将写入桌面' : '已关闭 AI 见解调试日志', true)
+              }}
+            />
+            <span className="switch-slider" />
+          </label>
         </div>
       </div>
     </div>
