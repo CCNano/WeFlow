@@ -284,6 +284,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   const [aiModelApiMaxTokens, setAiModelApiMaxTokens] = useState(200)
   const [aiInsightSilenceDays, setAiInsightSilenceDays] = useState(3)
   const [aiInsightAllowContext, setAiInsightAllowContext] = useState(false)
+  const [aiInsightAllowMomentsContext, setAiInsightAllowMomentsContext] = useState(false)
+  const [aiInsightMomentsContextCount, setAiInsightMomentsContextCount] = useState(5)
+  const [aiInsightMomentsBindings, setAiInsightMomentsBindings] = useState<Record<string, configService.AiInsightMomentsBinding>>({})
   const [isTestingInsight, setIsTestingInsight] = useState(false)
   const [insightTestResult, setInsightTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [showInsightApiKey, setShowInsightApiKey] = useState(false)
@@ -549,6 +552,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       const savedAiModelApiMaxTokens = await configService.getAiModelApiMaxTokens()
       const savedAiInsightSilenceDays = await configService.getAiInsightSilenceDays()
       const savedAiInsightAllowContext = await configService.getAiInsightAllowContext()
+      const savedAiInsightAllowMomentsContext = await configService.getAiInsightAllowMomentsContext()
+      const savedAiInsightMomentsContextCount = await configService.getAiInsightMomentsContextCount()
+      const savedAiInsightMomentsBindings = await configService.getAiInsightMomentsBindings()
       const savedAiInsightFilterMode = await configService.getAiInsightFilterMode()
       const savedAiInsightFilterList = await configService.getAiInsightFilterList()
       const savedAiInsightCooldownMinutes = await configService.getAiInsightCooldownMinutes()
@@ -573,6 +579,9 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       setAiModelApiMaxTokens(savedAiModelApiMaxTokens)
       setAiInsightSilenceDays(savedAiInsightSilenceDays)
       setAiInsightAllowContext(savedAiInsightAllowContext)
+      setAiInsightAllowMomentsContext(savedAiInsightAllowMomentsContext)
+      setAiInsightMomentsContextCount(savedAiInsightMomentsContextCount)
+      setAiInsightMomentsBindings(savedAiInsightMomentsBindings)
       setAiInsightFilterMode(savedAiInsightFilterMode)
       setAiInsightFilterList(new Set(savedAiInsightFilterList))
       setAiInsightCooldownMinutes(savedAiInsightCooldownMinutes)
@@ -3081,6 +3090,24 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     })
   }
 
+  const isMomentsEnabledForSession = (sessionId: string): boolean => {
+    return aiInsightMomentsBindings[sessionId]?.enabled === true
+  }
+
+  const handleToggleMomentsBinding = async (sessionId: string, enabled: boolean) => {
+    const nextBindings = { ...aiInsightMomentsBindings }
+    if (enabled) {
+      nextBindings[sessionId] = {
+        enabled: true,
+        updatedAt: Date.now()
+      }
+    } else {
+      delete nextBindings[sessionId]
+    }
+    setAiInsightMomentsBindings(nextBindings)
+    await configService.setAiInsightMomentsBindings(nextBindings)
+  }
+
   const handleSaveWeiboBinding = async (sessionId: string, displayName: string) => {
     const draftUid = getWeiboBindingDraftValue(sessionId)
     setWeiboBindingLoadingSessionId(sessionId)
@@ -3311,6 +3338,53 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
               const val = Math.max(1, Math.min(200, parseInt(e.target.value, 10) || 40))
               setAiInsightContextCount(val)
               scheduleConfigSave('aiInsightContextCount', () => configService.setAiInsightContextCount(val))
+            }}
+            style={{ width: 100 }}
+          />
+        </div>
+      )}
+
+      <div className="divider" />
+
+      <div className="form-group">
+        <label>允许发送近期朋友圈内容用于分析（实验性）</label>
+        <span className="form-hint">
+          仅对列表中勾选了「朋友圈」且会触发见解的私聊联系人生效。
+          程序只会在触发见解时按需读取最近朋友圈内容，不会做后台持续扫描。
+        </span>
+        <div className="log-toggle-line">
+          <span className="log-status">{aiInsightAllowMomentsContext ? '已开启' : '已关闭'}</span>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={aiInsightAllowMomentsContext}
+              onChange={async (e) => {
+                const val = e.target.checked
+                setAiInsightAllowMomentsContext(val)
+                await configService.setAiInsightAllowMomentsContext(val)
+              }}
+            />
+            <span className="switch-slider" />
+          </label>
+        </div>
+      </div>
+
+      {aiInsightAllowMomentsContext && (
+        <div className="form-group">
+          <label>发送近期朋友圈条数</label>
+          <span className="form-hint">
+            仅提取人类可读文本原文，不会拼接朋友圈原始 XML 字段。
+          </span>
+          <input
+            type="number"
+            className="field-input"
+            value={aiInsightMomentsContextCount}
+            min={1}
+            max={20}
+            onChange={(e) => {
+              const val = Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 5))
+              setAiInsightMomentsContextCount(val)
+              scheduleConfigSave('aiInsightMomentsContextCount', () => configService.setAiInsightMomentsContextCount(val))
             }}
             style={{ width: 100 }}
           />
@@ -3652,11 +3726,14 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                 <>
                   <div className="anti-revoke-list-header">
                     <span>对话（{filteredSessions.length}）</span>
+                    <span className="insight-moments-column-title">朋友圈</span>
                     <span className="insight-social-column-title">社交平台（微博）</span>
                     <span>状态</span>
                   </div>
                   {filteredSessions.map((session) => {
                     const isSelected = aiInsightFilterList.has(session.username)
+                    const isPrivateSession = session.type === 'private'
+                    const isMomentsEnabled = isMomentsEnabledForSession(session.username)
                     const weiboBinding = aiInsightWeiboBindings[session.username]
                     const weiboDraftValue = getWeiboBindingDraftValue(session.username)
                     const isBindingLoading = weiboBindingLoadingSessionId === session.username
@@ -3695,8 +3772,24 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
                             <span className="desc">{getSessionFilterTypeLabel(session.type)}</span>
                           </div>
                         </label>
+                        <div className="insight-moments-cell">
+                          {isPrivateSession ? (
+                            <label className="insight-moments-toggle">
+                              <input
+                                type="checkbox"
+                                checked={isMomentsEnabled}
+                                onChange={(e) => { void handleToggleMomentsBinding(session.username, e.target.checked) }}
+                              />
+                              <span className="check-indicator" aria-hidden="true">
+                                <Check size={12} />
+                              </span>
+                            </label>
+                          ) : (
+                            <span className="binding-feedback muted">-</span>
+                          )}
+                        </div>
                         <div className="insight-social-binding-cell">
-                          {session.type === 'private' ? (
+                          {isPrivateSession ? (
                             <>
                               <div className="insight-social-binding-input-wrap">
                                 <span className="binding-platform-chip">微博</span>

@@ -21,6 +21,7 @@ import { URL } from 'url'
 import { app, Notification } from 'electron'
 import { ConfigService } from './config'
 import { chatService, ChatSession, Message } from './chatService'
+import { snsService } from './snsService'
 import { weiboService } from './social/weiboService'
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
@@ -52,6 +53,9 @@ const INSIGHT_CONFIG_KEYS = new Set([
   'aiModelApiMaxTokens',
   'aiInsightFilterMode',
   'aiInsightFilterList',
+  'aiInsightAllowMomentsContext',
+  'aiInsightMomentsContextCount',
+  'aiInsightMomentsBindings',
   'aiInsightAllowSocialContext',
   'aiInsightSocialContextCount',
   'aiInsightWeiboCookie',
@@ -853,6 +857,61 @@ ${topMentionText}
     return new Date(parsed).toLocaleString('zh-CN')
   }
 
+  private formatMomentsTimestamp(raw: unknown): string {
+    const numeric = Number(raw)
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return ''
+    }
+    const ms = numeric > 1_000_000_000_000 ? numeric : numeric * 1000
+    return new Date(ms).toLocaleString('zh-CN')
+  }
+
+  private extractMomentReadableText(post: { contentDesc?: unknown; linkTitle?: unknown }): string {
+    const contentDesc = this.normalizeInsightText(String(post.contentDesc || '')).replace(/\s+/g, ' ').trim()
+    if (contentDesc) return contentDesc
+
+    const linkTitle = this.normalizeInsightText(String(post.linkTitle || '')).replace(/\s+/g, ' ').trim()
+    if (linkTitle) return `[链接] ${linkTitle}`
+
+    return ''
+  }
+
+  private async getMomentsContextSection(sessionId: string): Promise<string> {
+    const allowMomentsContext = this.config.get('aiInsightAllowMomentsContext') === true
+    if (!allowMomentsContext) return ''
+
+    const bindings =
+      (this.config.get('aiInsightMomentsBindings') as Record<string, { enabled?: boolean }> | undefined) || {}
+    const isEnabledForSession = bindings[sessionId]?.enabled === true
+    if (!isEnabledForSession) return ''
+
+    const countRaw = Number(this.config.get('aiInsightMomentsContextCount') || 5)
+    const momentsCount = Math.max(1, Math.min(20, Math.floor(countRaw) || 5))
+
+    try {
+      const result = await snsService.getTimeline(momentsCount, 0, [sessionId])
+      const posts = result.success && Array.isArray(result.timeline) ? result.timeline : []
+      if (posts.length === 0) return ''
+
+      const lines = posts
+        .map((post) => {
+          const text = this.extractMomentReadableText(post as { contentDesc?: unknown; linkTitle?: unknown })
+          if (!text) return ''
+          const shortText = text.length > 180 ? `${text.slice(0, 180)}...` : text
+          const time = this.formatMomentsTimestamp((post as { createTime?: unknown }).createTime)
+          return time ? `[朋友圈 ${time}] ${shortText}` : `[朋友圈] ${shortText}`
+        })
+        .filter(Boolean) as string[]
+
+      if (lines.length === 0) return ''
+      insightLog('INFO', `已加载 ${lines.length} 条朋友圈内容 (sessionId=${sessionId})`)
+      return `以下是该联系人的朋友圈内容（仅人类可读原文，最近 ${lines.length} 条）：\n${lines.join('\n')}`
+    } catch (error) {
+      insightLog('WARN', `拉取朋友圈内容失败 (sessionId=${sessionId}): ${(error as Error).message}`)
+      return ''
+    }
+  }
+
   private async getSocialContextSection(sessionId: string): Promise<string> {
     const allowSocialContext = this.config.get('aiInsightAllowSocialContext') === true
     if (!allowSocialContext) return ''
@@ -1136,6 +1195,7 @@ ${topMentionText}
       }
     }
 
+    const momentsContextSection = await this.getMomentsContextSection(sessionId)
     const socialContextSection = await this.getSocialContextSection(sessionId)
 
     // ── 默认 system prompt（稳定内容，有利于 provider 端 prompt cache 命中）────
@@ -1170,6 +1230,7 @@ ${topMentionText}
       `时间统计：${todayStatsDesc}`,
       `全局统计：${globalStatsDesc}`,
       contextSection,
+      momentsContextSection,
       socialContextSection,
       '请给出你的见解（≤80字）：'
     ].filter(Boolean).join('\n\n')
