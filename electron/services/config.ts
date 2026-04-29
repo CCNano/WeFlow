@@ -85,7 +85,13 @@ interface ConfigSchema {
   aiInsightApiModel: string
   aiInsightSilenceDays: number
   aiInsightAllowContext: boolean
+  aiInsightAllowMomentsContext: boolean
+  aiInsightMomentsContextCount: number
+  aiInsightMomentsBindings: Record<string, { enabled: boolean; updatedAt: number }>
   aiInsightAllowSocialContext: boolean
+  aiInsightSocialContextCount: number
+  aiInsightWeiboCookie: string
+  aiInsightWeiboBindings: Record<string, { uid: string; screenName?: string; updatedAt: number }>
   aiInsightFilterMode: 'whitelist' | 'blacklist'
   aiInsightFilterList: string[]
   aiInsightWhitelistEnabled: boolean
@@ -110,6 +116,8 @@ interface ConfigSchema {
   aiFootprintSystemPrompt: string
   /** 是否将 AI 见解调试日志输出到桌面 */
   aiInsightDebugLogEnabled: boolean
+  autoDownloadHighRes: boolean
+  autoDownloadWhitelist: string[]
 }
 
 // 需要 safeStorage 加密的字段（普通模式）
@@ -205,6 +213,9 @@ export class ConfigService {
       aiInsightApiModel: 'gpt-4o-mini',
       aiInsightSilenceDays: 3,
       aiInsightAllowContext: false,
+      aiInsightAllowMomentsContext: false,
+      aiInsightMomentsContextCount: 5,
+      aiInsightMomentsBindings: {},
       aiInsightAllowSocialContext: false,
       aiInsightFilterMode: 'whitelist',
       aiInsightFilterList: [],
@@ -222,7 +233,9 @@ export class ConfigService {
       aiInsightWeiboBindings: {},
       aiFootprintEnabled: false,
       aiFootprintSystemPrompt: '',
-      aiInsightDebugLogEnabled: false
+      aiInsightDebugLogEnabled: false,
+      autoDownloadHighRes: false,
+      autoDownloadWhitelist: []
     }
 
     const storeOptions: any = {
